@@ -53,7 +53,9 @@ export default function Settings() {
     });
     const [originalSshConfig, setOriginalSshConfig] = useState(null);
     const [hasPass, setHasPass] = useState(false);
+    const [hasKey, setHasKey] = useState(false);
     const [isEnv, setIsEnv] = useState(false);
+    const [authMethod, setAuthMethod] = useState('password'); // 'password' | 'key'
 
     // sshStatus removed in favor of Toast
 
@@ -88,14 +90,23 @@ export default function Settings() {
             setIsCustomMode(!standardSchedules.includes(settingsData.sync_schedule));
 
             // Merge loaded SSH data with default structure to ensure consistency
-            const loadedSsh = { ...sshConfig, ...sshData, password: '', privateKey: '' };
+            // Use undefined for secrets so they are omitted from JSON unless changed
+            const loadedSsh = { ...sshConfig, ...sshData, password: undefined, privateKey: undefined };
 
             setSshConfig(loadedSsh);
             setOriginalSshConfig(loadedSsh);
 
             setHasPass(sshData.hasPassword);
+            setHasKey(sshData.hasKey);
             setIsEnv(sshData.isEnv);
             setLocations(locData);
+
+            // Determine initial auth method
+            if (sshData.hasKey) {
+                setAuthMethod('key');
+            } else {
+                setAuthMethod('password');
+            }
         }).catch(err => console.error(err))
             .finally(() => setLoading(false));
     }, []);
@@ -186,6 +197,30 @@ export default function Settings() {
         } catch (err) {
             addToast('Error: ' + err.message, 'error');
         }
+    };
+
+    const handleKeyUpload = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (loadEvent) => {
+            setSshConfig(prev => ({ ...prev, privateKey: loadEvent.target.result }));
+            addToast('Private key loaded for upload', 'success');
+        };
+        reader.readAsText(file);
+    };
+
+    const handleClearKey = () => {
+        setSshConfig(prev => ({ ...prev, privateKey: '' }));
+        setHasKey(false); // Optimistic UI update
+        addToast('Private key cleared (save to persist)', 'info');
+    };
+
+    const handleClearPassword = () => {
+        setSshConfig(prev => ({ ...prev, password: '' }));
+        setHasPass(false); // Optimistic UI update
+        addToast('Password cleared (save to persist)', 'info');
     };
 
     // --- Locations Handlers ---
@@ -428,21 +463,140 @@ export default function Settings() {
                                     onChange={e => setSshConfig({ ...sshConfig, username: e.target.value })}
                                     style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', opacity: isEnv ? 0.6 : 1 }}
                                 />
+
                             </div>
+
                             {!isEnv && (
                                 <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>
-                                        Password {hasPass && <span style={{ color: 'var(--success)' }}>(Stored)</span>}
-                                    </label>
-                                    <input
-                                        type="password"
-                                        value={sshConfig.password}
-                                        onChange={e => setSshConfig({ ...sshConfig, password: e.target.value })}
-                                        placeholder={hasPass ? "Leave empty to keep existing" : "Enter password"}
-                                        style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                                    />
+                                    <div style={{ display: 'flex', gap: 16, marginBottom: 16, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAuthMethod('password')}
+                                            style={{
+                                                padding: '8px 4px',
+                                                background: 'none',
+                                                border: 'none',
+                                                borderBottom: authMethod === 'password' ? '2px solid var(--primary)' : '2px solid transparent',
+                                                color: authMethod === 'password' ? 'var(--text-main)' : 'var(--text-muted)',
+                                                cursor: 'pointer',
+                                                fontWeight: 500,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 6
+                                            }}
+                                        >
+                                            Password {hasPass && <span style={{ color: 'var(--success)', fontSize: '0.8em' }}>(Stored)</span>}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setAuthMethod('key')}
+                                            style={{
+                                                padding: '8px 4px',
+                                                background: 'none',
+                                                border: 'none',
+                                                borderBottom: authMethod === 'key' ? '2px solid var(--primary)' : '2px solid transparent',
+                                                color: authMethod === 'key' ? 'var(--text-main)' : 'var(--text-muted)',
+                                                cursor: 'pointer',
+                                                fontWeight: 500,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: 6
+                                            }}
+                                        >
+                                            Private Key {hasKey && <span style={{ color: 'var(--success)', fontSize: '0.8em' }}>(Stored)</span>}
+                                        </button>
+                                    </div>
+
+                                    {authMethod === 'password' && (
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <input
+                                                    type="password"
+                                                    value={sshConfig.password || ''}
+                                                    onChange={e => setSshConfig({ ...sshConfig, password: e.target.value })}
+                                                    placeholder={hasPass ? "Leave empty to keep existing" : "Enter password"}
+                                                    style={{ flex: 1, padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
+                                                />
+                                                {(hasPass || sshConfig.password) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleClearPassword}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            padding: '8px 12px',
+                                                            border: '1px solid var(--danger)',
+                                                            borderRadius: 8,
+                                                            background: 'rgba(220, 38, 38, 0.1)',
+                                                            color: 'var(--danger)',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s'
+                                                        }}
+                                                        title="Clear Password"
+                                                    >
+                                                        <X size={16} />
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Clear Stored Credential</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {authMethod === 'key' && (
+                                        <div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                                <input
+                                                    type="file"
+                                                    onChange={handleKeyUpload}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '8px',
+                                                        borderRadius: 8,
+                                                        border: '1px solid rgba(255,255,255,0.1)',
+                                                        background: 'rgba(0,0,0,0.2)',
+                                                        color: 'var(--text-muted)'
+                                                    }}
+                                                />
+                                                {sshConfig.privateKey && (
+                                                    <span style={{ color: 'var(--success)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        <FileText size={16} /> Key Set
+                                                    </span>
+                                                )}
+                                                {(hasKey || sshConfig.privateKey) && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleClearKey}
+                                                        style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: 6,
+                                                            padding: '8px 12px',
+                                                            border: '1px solid var(--danger)',
+                                                            borderRadius: 8,
+                                                            background: 'rgba(220, 38, 38, 0.1)',
+                                                            color: 'var(--danger)',
+                                                            cursor: 'pointer',
+                                                            transition: 'all 0.2s',
+                                                            marginLeft: 'auto'
+                                                        }}
+                                                        title="Clear Private Key"
+                                                    >
+                                                        <X size={16} />
+                                                        <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>Clear Stored Credential</span>
+                                                    </button>
+                                                )}
+                                            </div>
+                                            <p style={{ marginTop: 4, fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                                Upload an OpenSSH private key file (e.g. id_rsa).
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
                             )}
+
+
+
                             <div style={{ gridColumn: 'span 2', marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
                                 <button
                                     type="button"

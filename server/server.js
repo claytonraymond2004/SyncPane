@@ -69,7 +69,7 @@ app.get('/api/config', (req, res) => {
         port: config.port,
         username: config.username,
         hasPassword: !!config.password,
-        hasPassword: !!config.password,
+
         hasKey: !!config.privateKey,
         isEnv: !!config.isEnv
     });
@@ -79,12 +79,16 @@ app.get('/api/config', (req, res) => {
 function prepareTestConfig(body) {
     const current = getConnectionConfig(); // Decrypted from DB
 
+    // Helper: Any explicit value in body overrides current, even empty string.
+    // If undefined in body, keep current.
+    const getValue = (key) => (body[key] !== undefined ? body[key] : current[key]);
+
     return {
-        host: body.host || current.host,
+        host: getValue('host'),
         port: body.port ? parseInt(body.port) : current.port,
-        username: body.username || current.username,
-        password: body.password || current.password,
-        privateKey: body.privateKey || current.privateKey
+        username: getValue('username'),
+        password: getValue('password'),
+        privateKey: getValue('privateKey')
     };
 }
 
@@ -116,8 +120,17 @@ app.post('/api/config', async (req, res) => {
             if (host) stmt.run('host', host);
             if (port) stmt.run('port', String(port));
             if (username) stmt.run('username', username);
-            if (password) stmt.run('password', encrypt(password));
-            if (privateKey) stmt.run('privateKey', encrypt(privateKey));
+
+            // Special handling for secrets: empty string means DELETE
+            if (password !== undefined) {
+                if (password === '') db.prepare("DELETE FROM config WHERE key = 'password'").run();
+                else stmt.run('password', encrypt(password));
+            }
+
+            if (privateKey !== undefined) {
+                if (privateKey === '') db.prepare("DELETE FROM config WHERE key = 'privateKey'").run();
+                else stmt.run('privateKey', encrypt(privateKey));
+            }
         });
 
         transaction();
@@ -129,7 +142,13 @@ app.post('/api/config', async (req, res) => {
     } catch (err) {
         console.error('Config save error:', err);
         // If it was a connection error during verification
-        if (!skipTest && (err.level === 'client-socket' || err.code === 'ECONNREFUSED' || err.message.includes('SSH'))) {
+        if (!skipTest && (
+            err.level === 'client-socket' ||
+            err.level === 'client-authentication' ||
+            err.code === 'ECONNREFUSED' ||
+            err.message.includes('SSH') ||
+            err.message.includes('authentication methods failed')
+        )) {
             res.status(400).json({ success: false, error: err.message, type: 'CONNECTION_FAILED' });
         } else {
             res.status(500).json({ success: false, error: err.message });

@@ -185,13 +185,13 @@ export default function Browser() {
                     setError({
                         title: 'Configuration Required',
                         message: 'SSH Configuration is missing. Please configure your server details to continue.',
-                        action: { label: 'Go to Settings', link: '/config' }
+                        action: { label: 'Go to Settings', link: '/settings' }
                     });
                 } else if (data.error.includes('Authentication failure')) {
                     setError({
                         title: 'Authentication Failed',
                         message: 'Please check your username, password, or SSH key in Settings.',
-                        action: { label: 'Go to Settings', link: '/config' }
+                        action: { label: 'Go to Settings', link: '/settings' }
                     });
                 } else if (data.error.includes('ENOTFOUND') || data.error.includes('ETIMEDOUT')) {
                     setError({

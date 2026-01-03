@@ -395,37 +395,41 @@ export default function Settings() {
                                 </div>
                             </div>
                         )}
-                        {!isEnv && (
-                            <form onSubmit={(e) => handleSaveSSH(e)} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-                                <div style={{ gridColumn: 'span 2' }}>
-                                    <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Host / IP</label>
-                                    <input
-                                        className="input"
-                                        type="text"
-                                        value={sshConfig.host}
-                                        onChange={e => setSshConfig({ ...sshConfig, host: e.target.value })}
-                                        placeholder="e.g. 192.168.1.100"
-                                        style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Port</label>
-                                    <input
-                                        type="number"
-                                        value={sshConfig.port}
-                                        onChange={e => setSshConfig({ ...sshConfig, port: parseInt(e.target.value) })}
-                                        style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                                    />
-                                </div>
-                                <div>
-                                    <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Username</label>
-                                    <input
-                                        type="text"
-                                        value={sshConfig.username}
-                                        onChange={e => setSshConfig({ ...sshConfig, username: e.target.value })}
-                                        style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
-                                    />
-                                </div>
+                        <form onSubmit={(e) => handleSaveSSH(e)} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                            <div style={{ gridColumn: 'span 2' }}>
+                                <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Host / IP</label>
+                                <input
+                                    className="input"
+                                    type="text"
+                                    disabled={isEnv}
+                                    value={sshConfig.host}
+                                    onChange={e => setSshConfig({ ...sshConfig, host: e.target.value })}
+
+                                    placeholder="e.g. 192.168.1.100"
+                                    style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', opacity: isEnv ? 0.6 : 1 }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Port</label>
+                                <input
+                                    type="number"
+                                    disabled={isEnv}
+                                    value={sshConfig.port}
+                                    onChange={e => setSshConfig({ ...sshConfig, port: parseInt(e.target.value) })}
+                                    style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', opacity: isEnv ? 0.6 : 1 }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Username</label>
+                                <input
+                                    type="text"
+                                    disabled={isEnv}
+                                    value={sshConfig.username}
+                                    onChange={e => setSshConfig({ ...sshConfig, username: e.target.value })}
+                                    style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white', opacity: isEnv ? 0.6 : 1 }}
+                                />
+                            </div>
+                            {!isEnv && (
                                 <div style={{ gridColumn: 'span 2' }}>
                                     <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>
                                         Password {hasPass && <span style={{ color: 'var(--success)' }}>(Stored)</span>}
@@ -438,15 +442,17 @@ export default function Settings() {
                                         style={{ width: '100%', padding: '12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', color: 'white' }}
                                     />
                                 </div>
-                                <div style={{ gridColumn: 'span 2', marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
-                                    <button
-                                        type="button"
-                                        onClick={handleTestConnection}
-                                        className="btn btn-secondary"
-                                        style={{ marginRight: 'auto' }}
-                                    >
-                                        <Activity size={18} /> Test Connection
-                                    </button>
+                            )}
+                            <div style={{ gridColumn: 'span 2', marginTop: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+                                <button
+                                    type="button"
+                                    onClick={handleTestConnection}
+                                    className="btn btn-secondary"
+                                    style={{ marginRight: 'auto' }}
+                                >
+                                    <Activity size={18} /> Test Connection
+                                </button>
+                                {!isEnv && (
                                     <button
                                         type="submit"
                                         className="btn btn-primary"
@@ -454,9 +460,9 @@ export default function Settings() {
                                     >
                                         <Save size={18} /> Save SSH Config
                                     </button>
-                                </div>
-                            </form>
-                        )}
+                                )}
+                            </div>
+                        </form>
                     </div>
 
                     {/* --- SECTION 3: LOCAL PATHS --- */}
@@ -494,22 +500,25 @@ export default function Settings() {
                         </div>
                     </div>
                 </div>
-            )}
+            )
+            }
 
             {/* Local Browser Modal */}
-            {browserOpen && createPortal(
-                <LocalBrowser
-                    currentPath={newLoc || '/app'}
-                    onSelect={(path) => {
-                        setNewLoc(path);
-                        setBrowserOpen(false);
-                    }}
-                    onClose={() => setBrowserOpen(false)}
-                />,
-                document.body
-            )}
+            {
+                browserOpen && createPortal(
+                    <LocalBrowser
+                        currentPath={newLoc || '/app'}
+                        onSelect={(path) => {
+                            setNewLoc(path);
+                            setBrowserOpen(false);
+                        }}
+                        onClose={() => setBrowserOpen(false)}
+                    />,
+                    document.body
+                )
+            }
 
             <ToastContainer toasts={toasts} removeToast={removeToast} />
-        </div>
+        </div >
     );
 }

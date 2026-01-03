@@ -351,9 +351,27 @@ function syncFile(sftp, task, tracker, checkInterruption) {
         let completed = false;
         let interrupted = false;
 
+        // Check for partial transfer to resume
+        let startOffset = 0;
+        let flags = 'w';
         try {
-            readStream = sftp.createReadStream(remotePath);
-            writeStream = fs.createWriteStream(localPath);
+            if (fs.existsSync(localPath)) {
+                const stats = fs.statSync(localPath);
+                if (stats.size < task.size) { // remote size is in task object
+                    startOffset = stats.size;
+                    flags = 'a';
+                    tracker.processedBytes += startOffset; // Count already downloaded bytes
+                    console.log(`Resuming download for ${remotePath} from offset ${startOffset}`);
+                }
+            }
+        } catch (e) {
+            console.warn('Resume check failed, starting fresh:', e);
+        }
+
+        try {
+            // Updated to use start option for resume
+            readStream = sftp.createReadStream(remotePath, { start: startOffset });
+            writeStream = fs.createWriteStream(localPath, { flags });
         } catch (streamErr) {
             tracker.failedItems.push({ path: remotePath, error: 'Stream creation failed: ' + streamErr.message });
             return resolve();

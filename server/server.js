@@ -220,7 +220,17 @@ app.post('/api/remote/folders/sizes', async (req, res) => {
 // 3. Sync Items
 app.get('/api/sync', (req, res) => {
     const rows = db.prepare("SELECT * FROM sync_items WHERE status != 'deleted'").all();
-    res.json(rows);
+    const jobs = db.prepare("SELECT * FROM jobs WHERE status IN ('running', 'queued', 'paused', 'pausing')").all();
+
+    // Map jobs to items
+    const rowsWithJobs = rows.map(item => {
+        const itemJobs = jobs.filter(j => j.sync_item_id === item.id);
+        // Prioritize paused jobs so the UI shows the Resume option if available
+        const activeJob = itemJobs.find(j => j.status === 'paused') || itemJobs[0];
+        return { ...item, activeJob };
+    });
+
+    res.json(rowsWithJobs);
 });
 
 app.post('/api/sync', (req, res) => {

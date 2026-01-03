@@ -112,6 +112,16 @@ button {
   background: rgba(255, 255, 255, 0.1);
 }
 
+.status-warning,
+.status-outdated,
+.status-out-of-sync,
+.status-paused,
+.status-queued {
+  background: rgba(255, 179, 0, 0.15);
+  color: #ffb300;
+  border: 1px solid rgba(255, 179, 0, 0.3);
+}
+
 .btn-danger {
   background: rgba(220, 50, 50, 0.1);
   color: var(--error);
@@ -226,6 +236,9 @@ tr:last-child td {
   font-weight: 600;
   text-transform: uppercase;
   display: inline-block;
+  white-space: nowrap;
+  text-align: center;
+  min-width: 80px;
 }
 
 .status-synced,
@@ -236,7 +249,8 @@ tr:last-child td {
 
 .status-pending,
 .status-queued,
-.status-paused {
+.status-paused,
+.status-out-of-sync {
   color: #fbbf24;
   background: rgba(251, 191, 36, 0.1);
 }

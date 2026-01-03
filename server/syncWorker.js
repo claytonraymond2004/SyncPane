@@ -229,25 +229,25 @@ async function performSync(job) {
 // Helpers
 
 function shouldSync(remoteAttrs, localPath) {
-    if (!fs.existsSync(localPath)) return true;
+    if (!fs.existsSync(localPath)) return 'missing';
 
     // Safety check for file stat
     try {
         const stats = fs.statSync(localPath);
 
         // 1. Check Size
-        if (stats.size !== remoteAttrs.size) return true;
+        if (stats.size !== remoteAttrs.size) return 'size_mismatch';
 
         // 2. Check Mtime (allow 2 second variance)
         // remote mtime is in seconds (unix). local mtimeMs is milliseconds.
         const remoteTime = remoteAttrs.mtime;
         const localTime = Math.floor(stats.mtimeMs / 1000);
 
-        if (Math.abs(remoteTime - localTime) > 2) return true;
+        if (Math.abs(remoteTime - localTime) > 2) return 'time_mismatch';
 
-        return false; // Files are identical
+        return null; // Files are identical
     } catch (e) {
-        return true; // If assume error means explicit sync needed
+        return 'error'; // If assume error means explicit sync needed
     }
 }
 
@@ -257,8 +257,9 @@ async function generateSyncPlan(sftp, remotePath, localPath, type, failedItems) 
     if (type === 'file') {
         try {
             const stat = await sftpStats(sftp, remotePath);
-            if (shouldSync(stat, localPath)) {
-                plan.files.push({ remotePath, localPath, size: stat.size, mtime: stat.mtime, atime: stat.atime });
+            const reason = shouldSync(stat, localPath);
+            if (reason) {
+                plan.files.push({ remotePath, localPath, size: stat.size, mtime: stat.mtime, atime: stat.atime, reason });
                 plan.totalBytes += stat.size;
             }
         } catch (e) {
@@ -292,13 +293,15 @@ async function scanFolder(sftp, remoteDir, localDir, plan, failedItems) {
         if (item.attrs.isDirectory()) {
             await scanFolder(sftp, rPath, lPath, plan, failedItems);
         } else {
-            if (shouldSync(item.attrs, lPath)) {
+            const reason = shouldSync(item.attrs, lPath);
+            if (reason) {
                 plan.files.push({
                     remotePath: rPath,
                     localPath: lPath,
                     size: item.attrs.size,
                     mtime: item.attrs.mtime,
-                    atime: item.attrs.atime
+                    atime: item.attrs.atime,
+                    reason
                 });
                 plan.totalBytes += item.attrs.size;
             }
@@ -477,7 +480,7 @@ async function checkItemDiff(itemId) {
             if (item.error_message === 'Local file/folder missing. Sync disabled due to local deletion.') {
                 db.prepare("UPDATE sync_items SET status = 'synced', error_message = NULL WHERE id = ?").run(item.id);
             }
-            return { status: 'outdated', diffCount: plan.files.length, diffSize: plan.totalBytes };
+            return { status: 'outdated', diffCount: plan.files.length, diffSize: plan.totalBytes, diffFiles: plan.files };
         } else {
             // Fully synced + recovered
             if (item.error_message === 'Local file/folder missing. Sync disabled due to local deletion.') {

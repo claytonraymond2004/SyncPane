@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Trash2, Power, AlertCircle, CheckCircle } from 'lucide-react';
+import { RefreshCw, Trash2, Power, AlertCircle, CheckCircle, Eye, Play } from 'lucide-react';
 import ConfirmationModal from '../components/ConfirmationModal';
+import ModalBackdrop from '../components/ModalBackdrop';
+import { createPortal } from 'react-dom';
 
 export default function Dashboard() {
     const [items, setItems] = useState([]);
@@ -25,7 +27,7 @@ export default function Dashboard() {
             const data = await res.json();
             setItems(data);
 
-            // Initial load check (only if missing)
+            // Initial load check if status missing
             data.forEach(item => {
                 if (!liveDiffs[item.id]) {
                     checkLiveStatus(item.id);
@@ -144,8 +146,103 @@ export default function Dashboard() {
         setModalConfig({ ...modalConfig, isOpen: false }); // Close modal after action
     };
 
+    const resumeJob = async (jobId) => {
+        await fetch(`http://localhost:3001/api/jobs/${jobId}/resume`, { method: 'POST' });
+        // Give it a moment to update status
+        setTimeout(fetchItems, 500);
+    };
+
+    const formatBytes = (bytes) => {
+        if (!bytes) return '0 B';
+        const k = 1024;
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    };
+
+    // Diff Modal State
+    const [activeDiff, setActiveDiff] = useState(null); // { itemId, files }
+
     return (
         <div className="animate-enter">
+            {/* Diff Viewer Modal */}
+            {activeDiff && createPortal(
+                <ModalBackdrop onClose={() => setActiveDiff(null)}>
+                    <div style={{ padding: 24, paddingBottom: 16, width: '600px', maxWidth: '90vw' }}>
+                        <h2 style={{ fontSize: '1.2rem', marginBottom: 8 }}>Sync Differences</h2>
+                        <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: '0.9em' }}>
+                            The following files on the remote server differ from your local copy:
+                        </p>
+
+                        <div style={{
+                            background: 'rgba(0,0,0,0.3)',
+                            borderRadius: 6,
+                            border: '1px solid rgba(255,255,255,0.1)',
+                            maxHeight: '60vh',
+                            overflowY: 'auto',
+                            padding: 0
+                        }}>
+                            {activeDiff.files.map((file, i) => (
+                                <div key={i} style={{
+                                    padding: '12px',
+                                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: 4
+                                }}>
+                                    <div style={{ fontFamily: 'monospace', fontSize: '0.9em', color: 'var(--primary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ marginRight: 12, wordBreak: 'break-all' }}>
+                                            {file.remotePath.replace(activeDiff.basePath, '') || file.remotePath}
+                                        </span>
+                                        {file.reason && ((reason) => {
+                                            const colors = {
+                                                'missing': 'var(--error)',
+                                                'size_mismatch': 'var(--warning)',
+                                                'time_mismatch': 'var(--text-muted)'
+                                            };
+                                            const labels = {
+                                                'missing': 'Missing locally',
+                                                'size_mismatch': 'Size mismatch',
+                                                'time_mismatch': 'Date changed'
+                                            };
+                                            return (
+                                                <span style={{
+                                                    fontSize: '0.8rem',
+                                                    padding: '2px 6px',
+                                                    borderRadius: 4,
+                                                    background: 'rgba(255,255,255,0.05)',
+                                                    color: colors[reason] || 'var(--text-muted)',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    minWidth: 96,
+                                                    whiteSpace: 'nowrap',
+                                                    flexShrink: 0
+                                                }}>
+                                                    {labels[reason] || reason}
+                                                </span>
+                                            );
+                                        })(file.reason)}
+                                    </div>
+                                    <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', display: 'flex', gap: 12 }}>
+                                        <span>Size: {formatBytes(file.size)}</span>
+                                        <span>Modified: {new Date(file.mtime * 1000).toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'end', marginTop: 20 }}>
+                            <button className="btn btn-secondary" onClick={() => setActiveDiff(null)}>
+                                Close
+                            </button>
+                        </div>
+                    </div>
+                </ModalBackdrop>,
+                document.body
+            )
+            }
+
             <div className="header">
                 <h1 className="page-title">Dashboard</h1>
                 <p style={{ color: 'var(--text-muted)' }}>Overview of your synced folders and files.</p>
@@ -184,14 +281,38 @@ export default function Dashboard() {
                                         <td>
                                             {(() => {
                                                 const isLocalMissing = liveDiffs[item.id]?.status === 'local_missing';
-                                                const displayStatus = isLocalMissing ? 'error' : item.status;
+                                                const isOutdated = liveDiffs[item.id]?.status === 'outdated';
+                                                const activeJob = item.activeJob;
+
+                                                let displayStatus = item.status;
+                                                let displayClass = item.status;
+
+                                                if (activeJob) {
+                                                    // running, queued, pausing
+                                                    if (activeJob.status === 'queued') {
+                                                        displayStatus = 'Queued';
+                                                        displayClass = 'queued';
+                                                    } else {
+                                                        displayStatus = 'Pending';
+                                                        displayClass = 'pending';
+                                                    }
+                                                } else if (isLocalMissing) {
+                                                    displayStatus = 'error';
+                                                    displayClass = 'error';
+                                                } else if (isOutdated) {
+                                                    displayStatus = 'Out of Sync';
+                                                    displayClass = 'out-of-sync';
+                                                }
+
                                                 const displayError = item.error_message || (isLocalMissing ? liveDiffs[item.id].error : null);
 
                                                 return (
                                                     <>
-                                                        <span className={`status-badge status-${displayStatus}`}>
-                                                            {displayStatus}
-                                                        </span>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                            <span className={`status-badge status-${displayClass.toLowerCase().replace(/ /g, '-')}`}>
+                                                                {displayStatus}
+                                                            </span>
+                                                        </div>
                                                         {displayError && (
                                                             <div style={{ fontSize: '0.8em', color: 'var(--error)', marginTop: 4 }}>
                                                                 {displayError}
@@ -206,7 +327,37 @@ export default function Dashboard() {
                                                                 <span style={{ color: 'var(--success)' }}>✔ Up to date</span>
                                                             )}
                                                             {liveDiffs[item.id]?.status === 'outdated' && (
-                                                                <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>
+                                                                activeJob ? (
+                                                                    activeJob.status === 'paused' ? (
+
+                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 }}>
+                                                                            <span style={{ color: 'var(--warning)', whiteSpace: 'nowrap' }}>⚠ Sync paused</span>
+                                                                            <button
+                                                                                onClick={() => resumeJob(activeJob.id)}
+                                                                                className="text-btn"
+                                                                                style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'underline' }}
+                                                                            >
+                                                                                <Play size={14} /> Resume
+                                                                            </button>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span style={{ color: 'var(--success)' }}>
+                                                                            {activeJob.status === 'queued' ? '⧖ Waiting for other sync to finish...' : '⚠ Sync running...'}
+                                                                        </span>
+                                                                    )
+                                                                ) : (
+
+                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 }}>
+                                                                        <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>
+                                                                        <button
+                                                                            className="text-btn"
+                                                                            style={{ textDecoration: 'underline', fontSize: 'inherit', color: 'rgba(255,255,255,0.7)', padding: 0 }}
+                                                                            onClick={() => setActiveDiff({ itemId: item.id, files: liveDiffs[item.id].diffFiles || [], basePath: item.remote_path })}
+                                                                        >
+                                                                            View
+                                                                        </button>
+                                                                    </div>
+                                                                )
                                                             )}
                                                             {liveDiffs[item.id]?.status === 'error' && (
                                                                 <span style={{ color: 'var(--error)' }}>⚠ Check failed</span>
@@ -259,6 +410,6 @@ export default function Dashboard() {
                 isDestructive={modalConfig.isDestructive}
                 isWarning={modalConfig.isWarning}
             />
-        </div>
+        </div >
     );
 }

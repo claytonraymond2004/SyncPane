@@ -50,6 +50,9 @@ export default function Dashboard() {
             await Promise.all(data.map(async (item) => {
                 await checkLiveStatus(item.id);
             }));
+
+            // 3. Re-fetch to get updated statuses (e.g. error from local missing)
+            await fetchItems();
         } catch (err) {
             console.error(err);
         } finally {
@@ -174,39 +177,44 @@ export default function Dashboard() {
                             </thead>
                             <tbody>
                                 {items.map(item => (
-                                    <tr key={item.id} style={{ opacity: (!item.active || liveDiffs[item.id]?.status === 'local_missing') ? 0.5 : 1 }}>
+                                    <tr key={item.id} style={{ opacity: (liveDiffs[item.id]?.status === 'synced' || (item.active && liveDiffs[item.id]?.status !== 'local_missing')) ? 1 : 0.5 }}>
                                         <td>{item.type === 'folder' ? '📁' : '📄'}</td>
                                         <td style={{ fontFamily: 'monospace' }}>{item.remote_path}</td>
                                         <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{item.local_path}</td>
                                         <td>
-                                            <span className={`status-badge status-${item.status}`}>
-                                                {item.status}
-                                            </span>
-                                            {item.error_message && (
-                                                <div style={{ fontSize: '0.8em', color: 'var(--error)', marginTop: 4 }}>
-                                                    {item.error_message}
-                                                </div>
-                                            )}
-                                            {/* Live Status Indicator - Always show regardless of Active status */}
-                                            <div style={{ fontSize: '0.75em', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                {(!liveDiffs[item.id] || liveDiffs[item.id].status === 'checking') && (
-                                                    <span style={{ color: 'var(--text-muted)' }}>Checking remote...</span>
-                                                )}
-                                                {liveDiffs[item.id]?.status === 'synced' && (
-                                                    <span style={{ color: 'var(--success)' }}>✔ Up to date</span>
-                                                )}
-                                                {liveDiffs[item.id]?.status === 'local_missing' && !item.error_message && (
-                                                    <span style={{ color: 'var(--error)', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                        <AlertCircle size={14} /> {liveDiffs[item.id].error}
-                                                    </span>
-                                                )}
-                                                {liveDiffs[item.id]?.status === 'outdated' && (
-                                                    <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>
-                                                )}
-                                                {liveDiffs[item.id]?.status === 'error' && (
-                                                    <span style={{ color: 'var(--error)' }}>⚠ Check failed</span>
-                                                )}
-                                            </div>
+                                            {(() => {
+                                                const isLocalMissing = liveDiffs[item.id]?.status === 'local_missing';
+                                                const displayStatus = isLocalMissing ? 'error' : item.status;
+                                                const displayError = item.error_message || (isLocalMissing ? liveDiffs[item.id].error : null);
+
+                                                return (
+                                                    <>
+                                                        <span className={`status-badge status-${displayStatus}`}>
+                                                            {displayStatus}
+                                                        </span>
+                                                        {displayError && (
+                                                            <div style={{ fontSize: '0.8em', color: 'var(--error)', marginTop: 4 }}>
+                                                                {displayError}
+                                                            </div>
+                                                        )}
+                                                        {/* Live Status Indicator - Always show regardless of Active status */}
+                                                        <div style={{ fontSize: '0.75em', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                            {(!liveDiffs[item.id] || liveDiffs[item.id].status === 'checking') && (
+                                                                <span style={{ color: 'var(--text-muted)' }}>Checking remote...</span>
+                                                            )}
+                                                            {liveDiffs[item.id]?.status === 'synced' && (
+                                                                <span style={{ color: 'var(--success)' }}>✔ Up to date</span>
+                                                            )}
+                                                            {liveDiffs[item.id]?.status === 'outdated' && (
+                                                                <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>
+                                                            )}
+                                                            {liveDiffs[item.id]?.status === 'error' && (
+                                                                <span style={{ color: 'var(--error)' }}>⚠ Check failed</span>
+                                                            )}
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
                                         </td>
                                         <td style={{ fontSize: '0.9em' }}>
                                             {item.last_synced_at ? new Date(item.last_synced_at).toLocaleString() : '-'}

@@ -118,7 +118,8 @@ async function performSync(job) {
 
     if (!item.active && job.priority < 10) throw new Error('Sync item is inactive');
 
-    if (item.status === 'synced' && !fs.existsSync(item.local_path)) {
+    // Check for local deletion (unless manual sync override)
+    if (item.status === 'synced' && !fs.existsSync(item.local_path) && job.priority < 10) {
         db.prepare('UPDATE sync_items SET active = 0, status = ? WHERE id = ?').run('unsynced - local missing', item.id);
         throw new Error('Local file/folder missing. Sync disabled due to local deletion.');
     }

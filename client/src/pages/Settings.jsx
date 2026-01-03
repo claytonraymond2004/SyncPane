@@ -72,14 +72,18 @@ export default function Settings() {
     }, []);
 
     // --- Global Settings Handlers ---
-    const handleSaveGlobal = async () => {
+    const handleSaveGlobal = async (overrideConfig) => {
+        const configToSave = overrideConfig || globalConfig;
         setGlobalSaving(true);
         try {
             await fetch('http://localhost:3001/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(globalConfig)
+                body: JSON.stringify(configToSave)
             });
+            // Update local state if we saved an override
+            if (overrideConfig) setGlobalConfig(overrideConfig);
+
             addToast('Settings saved successfully!', 'success');
         } catch (err) {
             addToast('Failed to save settings: ' + err.message, 'error');
@@ -99,12 +103,12 @@ export default function Settings() {
                 confirmLabel: 'Disable All Syncs',
                 isWarning: true,
                 onConfirm: () => {
-                    setGlobalConfig({ ...globalConfig, global_sync_enabled: false });
-                    setModalConfig({ ...modalConfig, isOpen: false });
+                    handleSaveGlobal({ ...globalConfig, global_sync_enabled: false });
+                    setModalConfig(prev => ({ ...prev, isOpen: false }));
                 }
             });
         } else {
-            setGlobalConfig({ ...globalConfig, global_sync_enabled: true });
+            handleSaveGlobal({ ...globalConfig, global_sync_enabled: true });
         }
     };
 
@@ -154,15 +158,18 @@ export default function Settings() {
     };
 
     // --- Locations Handlers ---
-    const addLocation = async () => {
-        if (!newLoc) return;
+    const addLocation = async (pathToAdd) => {
+        const path = pathToAdd || newLoc;
+        if (!path) return;
+
         await fetch('http://localhost:3001/api/sync-locations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: newLoc, label: '' })
+            body: JSON.stringify({ path: path, label: '' })
         });
         setNewLoc('');
         fetchLocations();
+        addToast('Path added to favorites', 'success');
     };
 
     const fetchLocations = () => {
@@ -409,7 +416,10 @@ export default function Settings() {
             {/* Local Browser Modal */}
             {browserOpen && createPortal(
                 <LocalBrowserModal
-                    onSelect={(path) => { setNewLoc(path); setBrowserOpen(false); }}
+                    onSelect={(path) => {
+                        addLocation(path);
+                        setBrowserOpen(false);
+                    }}
                     onClose={() => setBrowserOpen(false)}
                 />,
                 document.body

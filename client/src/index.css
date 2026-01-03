@@ -141,6 +141,15 @@ button {
   background: rgba(251, 191, 36, 0.2);
 }
 
+button:disabled,
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+  pointer-events: none;
+}
+
 /* Layout */
 .app-container {
   display: flex;

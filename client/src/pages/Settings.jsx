@@ -5,6 +5,21 @@ import ConfirmationModal from '../components/ConfirmationModal';
 import ToastContainer from '../components/Toast';
 import LocalBrowser from '../components/LocalBrowser';
 
+// Helper to normalize config for comparison (ensures key order/subset)
+const normalizeGlobal = (c) => ({
+    sync_schedule: c.sync_schedule,
+    global_sync_enabled: c.global_sync_enabled,
+    connection_timeout_minutes: c.connection_timeout_minutes
+});
+
+const normalizeSSH = (c) => ({
+    host: c.host,
+    port: c.port,
+    username: c.username,
+    password: c.password,
+    privateKey: c.privateKey
+});
+
 export default function Settings() {
     // --- Global Settings State ---
     const [globalConfig, setGlobalConfig] = useState({
@@ -66,12 +81,16 @@ export default function Settings() {
         ]).then(([settingsData, sshData, locData]) => {
             setGlobalConfig(settingsData);
             setOriginalGlobalConfig(settingsData);
+
             // check if loaded schedule is non-standard
             setIsCustomMode(!standardSchedules.includes(settingsData.sync_schedule));
 
-            const loadedSsh = { ...sshData, password: '', privateKey: '' };
-            setSshConfig(prev => ({ ...prev, ...loadedSsh }));
-            setOriginalSshConfig(prev => ({ ...prev, ...loadedSsh }));
+            // Merge loaded SSH data with default structure to ensure consistency
+            const loadedSsh = { ...sshConfig, ...sshData, password: '', privateKey: '' };
+
+            setSshConfig(loadedSsh);
+            setOriginalSshConfig(loadedSsh);
+
             setHasPass(sshData.hasPassword);
             setLocations(locData);
         }).catch(err => console.error(err))
@@ -199,6 +218,10 @@ export default function Settings() {
             }
         });
     };
+
+    // Computed changes
+    const hasGlobalChanges = originalGlobalConfig && JSON.stringify(normalizeGlobal(globalConfig)) !== JSON.stringify(normalizeGlobal(originalGlobalConfig));
+    const hasSSHChanges = originalSshConfig && JSON.stringify(normalizeSSH(sshConfig)) !== JSON.stringify(normalizeSSH(originalSshConfig));
 
     return (
         <div className="animate-enter" style={{ maxWidth: 800, paddingBottom: 40 }}>
@@ -333,7 +356,7 @@ export default function Settings() {
                                 <button
                                     className="btn btn-primary"
                                     onClick={() => handleSaveGlobal()}
-                                    disabled={globalSaving || (originalGlobalConfig && JSON.stringify(globalConfig) === JSON.stringify(originalGlobalConfig))}
+                                    disabled={globalSaving || !hasGlobalChanges}
                                 >
                                     {globalSaving ? <span className="spin"><Save size={16} /></span> : <Save size={16} />}
                                     <span>Save Policy</span>
@@ -401,7 +424,7 @@ export default function Settings() {
                                 <button
                                     type="submit"
                                     className="btn btn-primary"
-                                    disabled={originalSshConfig && JSON.stringify(sshConfig) === JSON.stringify(originalSshConfig)}
+                                    disabled={!hasSSHChanges}
                                 >
                                     <Save size={18} /> Save SSH Config
                                 </button>
@@ -425,7 +448,7 @@ export default function Settings() {
                             <button onClick={() => setBrowserOpen(true)} className="btn btn-secondary" style={{ whiteSpace: 'nowrap' }}>
                                 <Folder size={18} /> Browse
                             </button>
-                            <button onClick={() => addLocation()} className="btn btn-primary" disabled={!newLoc.trim()}><Plus size={18} /></button>
+                            <button onClick={() => addLocation()} className="btn btn-primary" disabled={!newLoc || !newLoc.trim()}><Plus size={18} /></button>
                         </div>
                         <div>
                             {locations.map(loc => (

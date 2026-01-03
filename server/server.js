@@ -30,7 +30,8 @@ app.get('/api/settings', (req, res) => {
 
         res.json({
             sync_schedule: schedule ? schedule.value : '0 * * * *',
-            global_sync_enabled: globalEnabled ? globalEnabled.value === 'true' : true
+            global_sync_enabled: globalEnabled ? globalEnabled.value === 'true' : true,
+            connection_timeout_minutes: parseInt(db.prepare('SELECT value FROM config WHERE key = ?').get('connection_timeout_minutes')?.value || '60')
         });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -39,7 +40,7 @@ app.get('/api/settings', (req, res) => {
 
 app.post('/api/settings', (req, res) => {
     try {
-        const { sync_schedule, global_sync_enabled } = req.body;
+        const { sync_schedule, global_sync_enabled, connection_timeout_minutes } = req.body;
 
         if (sync_schedule) {
             db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run('sync_schedule', sync_schedule);
@@ -48,6 +49,10 @@ app.post('/api/settings', (req, res) => {
 
         if (global_sync_enabled !== undefined) {
             db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run('global_sync_enabled', String(global_sync_enabled));
+        }
+
+        if (connection_timeout_minutes !== undefined) {
+            db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run('connection_timeout_minutes', String(connection_timeout_minutes));
         }
 
         res.json({ success: true });

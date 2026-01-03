@@ -31,17 +31,28 @@ async function processQueue() {
             }
 
             // Check if job was paused or cancelled during execution
-            const currentJob = db.prepare('SELECT status FROM jobs WHERE id = ?').get(job.id);
+            const currentJob = db.prepare('SELECT status, failed_items FROM jobs WHERE id = ?').get(job.id);
 
             // Only mark as completed if it's still marked as running (meaning it finished naturally)
             if (currentJob.status === 'running') {
-                // Mark completed
-                db.prepare('UPDATE jobs SET status = ?, completed_at = CURRENT_TIMESTAMP, log = ? WHERE id = ?')
-                    .run('completed', 'Sync completed successfully', job.id);
+                const failedItems = currentJob.failed_items ? JSON.parse(currentJob.failed_items) : [];
 
-                // Update item status
-                db.prepare('UPDATE sync_items SET status = ?, last_synced_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id = ?')
-                    .run('synced', job.sync_item_id);
+                if (failedItems.length > 0) {
+                    // Partial failure
+                    db.prepare('UPDATE jobs SET status = ?, completed_at = CURRENT_TIMESTAMP, log = ? WHERE id = ?')
+                        .run('failed', `Completed with ${failedItems.length} errors`, job.id);
+
+                    db.prepare('UPDATE sync_items SET status = ?, error_message = ? WHERE id = ?')
+                        .run('error', `Last sync had ${failedItems.length} errors`, job.sync_item_id);
+                } else {
+                    // Success
+                    db.prepare('UPDATE jobs SET status = ?, completed_at = CURRENT_TIMESTAMP, log = ? WHERE id = ?')
+                        .run('completed', 'Sync completed successfully', job.id);
+
+                    // Update item status
+                    db.prepare('UPDATE sync_items SET status = ?, last_synced_at = CURRENT_TIMESTAMP, error_message = NULL WHERE id = ?')
+                        .run('synced', job.sync_item_id);
+                }
             }
 
         } catch (err) {
@@ -139,116 +150,224 @@ async function performSync(job) {
         throw new Error('Local file/folder missing. Sync disabled due to local deletion.');
     }
 
+    const timeoutMins = parseInt(db.prepare('SELECT value FROM config WHERE key = ?').get('connection_timeout_minutes')?.value || '60');
+    const CONNECTION_TIMEOUT_MS = timeoutMins * 60 * 1000;
+
     // Register Controller
     activeJobControllers.set(job.id, { cancel: false, pause: false, preempt: false });
-
-    const conn = await connect();
 
     // Helper to check interruption
     const checkInterruption = () => {
         const controller = activeJobControllers.get(job.id);
         if (!controller) return null;
-        if (controller.cancel) {
-            return 'cancelled';
-        }
-        if (controller.pause) {
-            return 'paused';
-        }
-        if (controller.preempt) {
-            return 'preempted';
-        }
+        if (controller.cancel) return 'cancelled';
+        if (controller.pause) return 'paused';
+        if (controller.preempt) return 'preempted';
         return null;
     };
 
-    return new Promise((resolve, reject) => {
-        conn.sftp(async (err, sftp) => {
-            if (err) {
-                conn.end();
-                activeJobControllers.delete(job.id);
-                return reject(err);
-            }
+    // State for Reconnection Logic
+    let conn = null;
+    let sftp = null;
+    let outageStart = null;
+
+    // --- RECONNECTION HELPER ---
+    const ensureConnection = async () => {
+        // If we have a valid connection, check if it's still alive (simple ping?)
+        // SSH2 doesn't have an easy "ping", but if we are here, we likely just started or crashed.
+        // So we assume if conn is null or we caught an error, we need to connect.
+
+        let attempts = 0;
+
+        while (true) {
+            // 1. Check interruption first
+            const status = checkInterruption();
+            if (status) throw new Error(getInterruptionMessage(status));
 
             try {
-                // Initialize Progress Tracking
-                const tracker = {
-                    totalBytes: 0,
-                    processedBytes: 0,
-                    startTime: Date.now(),
-                    lastUpdate: 0,
-                    jobId: job.id,
-                    failedItems: []
-                };
+                if (conn) {
+                    conn.end(); // Cleanup old
+                    conn = null;
+                }
 
-                // 1. Generate Sync Plan (Diff)
-                // Check interruption before heavy scan?
-                if (checkInterruption()) throw new Error('Interrupted');
+                console.log(`[Job ${job.id}] Establishing connection...`);
+                conn = await connect();
 
-                const plan = await generateSyncPlan(sftp, item.remote_path, item.local_path, item.type, tracker.failedItems);
+                // Get SFTP channel
+                sftp = await new Promise((resolve, reject) => {
+                    conn.sftp((err, s) => {
+                        if (err) reject(err);
+                        else resolve(s);
+                    });
+                });
 
+                // Success! Reset outage timer.
+                if (outageStart) {
+                    console.log(`[Job ${job.id}] Connection restored after ${(Date.now() - outageStart) / 1000}s`);
+                    outageStart = null;
+                }
+                attempts = 0; // Reset attempts on successful connection
+                return; // Exit loop
+
+            } catch (err) {
+                console.warn(`[Job ${job.id}] Connection failed: ${err.message}`);
+
+                if (!outageStart) outageStart = Date.now();
+                const outageDuration = Date.now() - outageStart;
+
+                if (outageDuration > CONNECTION_TIMEOUT_MS) {
+                    throw new Error(`Connection timeout exceeded (${timeoutMins} mins). Last error: ${err.message}`);
+                }
+
+                // Update Status to warn user
+                db.prepare("UPDATE jobs SET log = ? WHERE id = ?").run(`Connection lost. Retrying... (${Math.floor(outageDuration / 1000)}s)`, job.id);
+
+                // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s...
+                const delay = Math.min(30000, 1000 * Math.pow(2, attempts));
+                attempts++;
+
+                console.log(`[Job ${job.id}] Waiting ${delay}ms before retry (Attempt ${attempts})`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+    };
+
+    // --- EXECUTION BLOCK ---
+
+    try {
+        await ensureConnection();
+
+        // Initialize Progress Tracking
+        const tracker = {
+            totalBytes: 0,
+            processedBytes: 0,
+            startTime: Date.now(),
+            lastUpdate: 0,
+            jobId: job.id,
+            failedItems: []
+        };
+
+        // 1. Generate Sync Plan (Loop for retries)
+        let plan = null;
+        while (!plan) {
+            try {
+                if (checkInterruption()) throw new Error(getInterruptionMessage(checkInterruption()));
+
+                console.log(`[Job ${job.id}] Generating sync plan...`);
+                plan = await generateSyncPlan(sftp, item.remote_path, item.local_path, item.type, tracker.failedItems);
+
+                // If we get here, plan is generated. 
                 tracker.totalBytes = plan.totalBytes;
 
                 console.log(`[Job ${job.id}] Sync Plan Generated: ${plan.files.length} files to sync (${plan.totalBytes} bytes).`);
-                console.log(`[Job ${job.id}] Target: ${item.local_path} <- ${item.remote_path}`);
-
-                // Update DB with total (this is now the transfer size)
                 db.prepare('UPDATE jobs SET total_bytes = ? WHERE id = ?').run(tracker.totalBytes, job.id);
 
-                // 2. Perform Sync based on Plan
-                updateProgress(tracker, true); // Initial update (0/Total)
+            } catch (err) {
+                if (isNetError(err)) {
+                    console.log(`[Job ${job.id}] Network error during planning. Retrying...`);
+                    await ensureConnection();
+                    // Loop continues and tries generateSyncPlan again
+                } else {
+                    throw err; // Fatal logic error or interruption
+                }
+            }
+        }
 
-                for (const fileTask of plan.files) {
+        // 2. Perform Sync (Loop through files)
+        updateProgress(tracker, true);
+
+        for (const fileTask of plan.files) {
+            let fileSynced = false;
+
+            while (!fileSynced) {
+                // Outer loop handles retry for same file
+                try {
                     const status = checkInterruption();
-                    if (status) {
-                        // Handle Stop (Cancellation/Pause check BEFORE file start)
-                        if (status === 'cancelled') {
-                            db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Cancelled by user' WHERE id = ?").run(job.id);
-                            throw new Error('Cancelled by user');
-                        }
-                        if (status === 'paused') {
-                            db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(job.id);
-                            throw new Error('Paused by user');
-                        }
-                        if (status === 'preempted') {
-                            db.prepare("UPDATE jobs SET status = 'queued', log = 'Preempted by priority job' WHERE id = ?").run(job.id);
-                            throw new Error('Preempted');
-                        }
+                    if (status) throw new Error(getInterruptionMessage(status));
+
+                    await syncFile(sftp, fileTask, tracker, checkInterruption);
+                    fileSynced = true; // Success
+
+                } catch (err) {
+                    // Check Interruption Error specifically
+                    if (['Cancelled by user', 'Paused by user', 'Preempted'].includes(err.message)) {
+                        throw err;
                     }
 
-                    // Pass checkInterruption callback to syncFile
-                    await syncFile(sftp, fileTask, tracker, checkInterruption);
+                    if (isNetError(err)) {
+                        console.log(`[Job ${job.id}] Network error during sync of ${fileTask.remotePath}. Retrying...`);
+                        await ensureConnection();
+                        // Loop continues and retries same file
+                    } else {
+                        // Non-network error (e.g. permission denied)
+                        console.error(`[Job ${job.id}] Failed to sync ${fileTask.remotePath}: ${err.message}`);
+                        tracker.failedItems.push({ path: fileTask.remotePath, error: err.message });
+                        fileSynced = true; // Mark done so we move to next file
+                    }
                 }
-
-                // Final update
-                updateProgress(tracker, true);
-
-                // Check for failures
-                if (tracker.failedItems.length > 0) {
-                    db.prepare('UPDATE jobs SET failed_items = ? WHERE id = ?')
-                        .run(JSON.stringify(tracker.failedItems), job.id);
-                }
-
-                conn.end();
-                activeJobControllers.delete(job.id);
-                resolve();
-            } catch (syncErr) {
-                conn.end();
-                activeJobControllers.delete(job.id);
-
-                if (syncErr.message === 'Cancelled by user') {
-                    db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Cancelled by user' WHERE id = ?").run(job.id);
-                    return resolve();
-                } else if (syncErr.message === 'Paused by user') {
-                    db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(job.id);
-                    return resolve();
-                } else if (syncErr.message === 'Preempted') {
-                    db.prepare("UPDATE jobs SET status = 'queued', log = 'Preempted by priority job' WHERE id = ?").run(job.id);
-                    return resolve();
-                }
-
-                reject(syncErr);
             }
-        });
-    });
+        }
+
+        // Final update
+        updateProgress(tracker, true);
+
+        // Check for failures
+        if (tracker.failedItems.length > 0) {
+            db.prepare('UPDATE jobs SET failed_items = ? WHERE id = ?')
+                .run(JSON.stringify(tracker.failedItems), job.id);
+        }
+
+    } catch (finalErr) {
+        if (conn) {
+            try { conn.end(); } catch (e) { }
+        }
+        activeJobControllers.delete(job.id);
+
+        // Handle Status Updates based on specific error messages
+        if (finalErr.message === 'Cancelled by user') {
+            db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Cancelled by user' WHERE id = ?").run(job.id);
+            return;
+        } else if (finalErr.message === 'Paused by user') {
+            db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(job.id);
+            return;
+        } else if (finalErr.message === 'Preempted') {
+            db.prepare("UPDATE jobs SET status = 'queued', log = 'Preempted by priority job' WHERE id = ?").run(job.id);
+            return;
+        }
+
+        // Real Error
+        throw finalErr;
+    }
+
+    if (conn) {
+        try { conn.end(); } catch (e) { }
+    }
+    activeJobControllers.delete(job.id);
+}
+
+// Helpers
+
+function getInterruptionMessage(status) {
+    if (status === 'cancelled') return 'Cancelled by user';
+    if (status === 'paused') return 'Paused by user';
+    if (status === 'preempted') return 'Preempted';
+    return 'Interrupted';
+}
+
+function isNetError(err) {
+    const msg = err.message.toLowerCase();
+    return (
+        msg.includes('conn') ||
+        msg.includes('socket') ||
+        msg.includes('ssh') ||
+        msg.includes('network') ||
+        msg.includes('time') ||
+        msg.includes('closed') ||
+        msg.includes('end') ||
+        err.code === 'ECONNRESET' ||
+        err.code === 'ENOTFOUND' ||
+        err.code === 'ETIMEDOUT'
+    );
 }
 
 // Helpers

@@ -8,7 +8,8 @@ export default function Settings() {
     // --- Global Settings State ---
     const [globalConfig, setGlobalConfig] = useState({
         sync_schedule: '0 * * * *',
-        global_sync_enabled: true
+        global_sync_enabled: true,
+        connection_timeout_minutes: 60
     });
 
     // Explicit UI mode state for Custom Schedule
@@ -302,6 +303,22 @@ export default function Settings() {
                                         </p>
                                     </div>
                                 )}
+                            </div>
+
+                            {/* Timeout */}
+                            <div>
+                                <h3 style={{ fontSize: '1.1rem', marginBottom: 8 }}>Connection Timeout</h3>
+                                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: 12 }}>
+                                    How long to retry if the connection is lost (in minutes).
+                                </p>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    value={globalConfig.connection_timeout_minutes}
+                                    onChange={(e) => setGlobalConfig({ ...globalConfig, connection_timeout_minutes: parseInt(e.target.value) || 1 })}
+                                    style={{ width: '100%', padding: 12, borderRadius: 'var(--radius-md)', background: 'rgba(0,0,0,0.2)', border: '1px solid rgba(255,255,255,0.1)', color: 'white' }}
+                                    disabled={!globalConfig.global_sync_enabled}
+                                />
                             </div>
 
                             <div style={{ paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>

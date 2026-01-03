@@ -66,7 +66,7 @@ async function processQueue() {
 
 const { getFolderSizes } = require('./sshManager');
 
-// Job Control Map: jobId -> { cancel: bool, pause: bool }
+// Job Control Map: jobId -> { cancel: bool, pause: bool, preempt: bool }
 const activeJobControllers = new Map();
 
 function cancelJob(jobId) {
@@ -100,6 +100,21 @@ function pauseJob(jobId) {
         if (activeJobControllers.has(jobId)) {
             activeJobControllers.get(jobId).pause = true;
         }
+    } else if (job.status === 'queued') {
+        // Allow pausing queued jobs directly
+        db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(jobId);
+    }
+}
+
+function preemptJob(jobId) {
+    const job = db.prepare('SELECT status FROM jobs WHERE id = ?').get(jobId);
+    if (!job) return;
+
+    if (job.status === 'running') {
+        db.prepare("UPDATE jobs SET status = 'pausing' WHERE id = ?").run(jobId); // Set pausing so loop sees it
+        if (activeJobControllers.has(jobId)) {
+            activeJobControllers.get(jobId).preempt = true;
+        }
     }
 }
 
@@ -125,7 +140,7 @@ async function performSync(job) {
     }
 
     // Register Controller
-    activeJobControllers.set(job.id, { cancel: false, pause: false });
+    activeJobControllers.set(job.id, { cancel: false, pause: false, preempt: false });
 
     const conn = await connect();
 
@@ -138,6 +153,9 @@ async function performSync(job) {
         }
         if (controller.pause) {
             return 'paused';
+        }
+        if (controller.preempt) {
+            return 'preempted';
         }
         return null;
     };
@@ -190,6 +208,10 @@ async function performSync(job) {
                             db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(job.id);
                             throw new Error('Paused by user');
                         }
+                        if (status === 'preempted') {
+                            db.prepare("UPDATE jobs SET status = 'queued', log = 'Preempted by priority job' WHERE id = ?").run(job.id);
+                            throw new Error('Preempted');
+                        }
                     }
 
                     // Pass checkInterruption callback to syncFile
@@ -217,6 +239,9 @@ async function performSync(job) {
                     return resolve();
                 } else if (syncErr.message === 'Paused by user') {
                     db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(job.id);
+                    return resolve();
+                } else if (syncErr.message === 'Preempted') {
+                    db.prepare("UPDATE jobs SET status = 'queued', log = 'Preempted by priority job' WHERE id = ?").run(job.id);
                     return resolve();
                 }
 
@@ -403,6 +428,10 @@ function syncFile(sftp, task, tracker, checkInterruption) {
                     console.log(`[Job ${tracker.jobId}] Transfer paused: ${remotePath}`);
                     reject(new Error('Paused by user'));
                 }
+                else if (status === 'preempted') {
+                    console.log(`[Job ${tracker.jobId}] Transfer preempted: ${remotePath}`);
+                    reject(new Error('Preempted'));
+                }
                 return;
             }
 
@@ -449,7 +478,11 @@ async function checkItemDiff(itemId) {
     if (!item) throw new Error('Item not found');
 
     // 0. Pre-check for local deletion
-    if (!fs.existsSync(item.local_path)) {
+    // If there's an active job (queued/running/paused/pausing), we expect the file might not be there yet or be in flux.
+    // In that case, do NOT disable the item.
+    const activeJob = db.prepare("SELECT id FROM jobs WHERE sync_item_id = ? AND status IN ('queued', 'running', 'paused', 'pausing')").get(item.id);
+
+    if (!activeJob && !fs.existsSync(item.local_path)) {
         const msg = 'Local file/folder missing. Sync disabled due to local deletion.';
         db.prepare('UPDATE sync_items SET active = 0, status = ?, error_message = ? WHERE id = ?')
             .run('error', msg, item.id);
@@ -496,7 +529,30 @@ async function checkItemDiff(itemId) {
     }
 }
 
+// Cleanup zombie jobs on startup
+function cleanupZombieJobs() {
+    try {
+        const result = db.prepare("UPDATE jobs SET status = 'queued', log = 'Recovered from crash/restart' WHERE status IN ('running', 'pausing')").run();
+        if (result.changes > 0) {
+            console.log(`Recovered ${result.changes} zombie jobs (reset to queued).`);
+        }
+    } catch (err) {
+        console.error('Failed to cleanup zombie jobs:', err);
+    }
+}
+
+// Run cleanup immediately
+cleanupZombieJobs();
+
 // Start the loop
 setInterval(processQueue, 2000);
 
-module.exports = { processQueue, cancelJob, pauseJob, resumeJob, checkItemDiff };
+module.exports = {
+    processQueue,
+    cancelJob,
+    pauseJob,
+    resumeJob,
+    preemptJob,
+    checkItemDiff
+};
+

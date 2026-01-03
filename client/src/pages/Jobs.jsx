@@ -187,12 +187,11 @@ export default function Jobs() {
                         <thead>
                             <tr>
                                 <th>Status</th>
-                                <th>Type</th>
-                                <th style={{ width: '25%' }}>Progress</th>
+                                <th style={{ width: '30%' }}>Progress</th>
                                 <th>Duration</th>
                                 <th>File/Folder</th>
                                 <th>Started</th>
-                                <th style={{ textAlign: 'right' }}>Priority</th>
+                                <th style={{ textAlign: 'right' }}>Actions</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -207,7 +206,6 @@ export default function Jobs() {
                                                 {job.status}
                                             </span>
                                         </td>
-                                        <td>{job.type}</td>
                                         <td>
                                             {job.status === 'running' && job.total_bytes > 0 ? (
                                                 <div style={{ width: '100%' }}>
@@ -257,7 +255,7 @@ export default function Jobs() {
                                                 'Running...'
                                             ) : '-'}
                                         </td>
-                                        <td style={{ fontFamily: 'monospace', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        <td style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
                                             {job.remote_path || '-'}
                                         </td>
                                         <td style={{ fontSize: '0.9em' }}>
@@ -265,42 +263,49 @@ export default function Jobs() {
                                         </td>
                                         <td style={{ textAlign: 'right' }}>
                                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6 }}>
-                                                {job.status === 'running' && (
-                                                    <>
-                                                        <button onClick={() => updateJobStatus(job.id, 'pause')} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Pause">
-                                                            <Pause size={14} />
-                                                        </button>
-                                                        <button onClick={() => updateJobStatus(job.id, 'cancel')} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Cancel">
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {job.status === 'paused' && (
-                                                    <>
-                                                        <button onClick={() => updateJobStatus(job.id, 'resume')} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Resume">
-                                                            <Play size={14} />
-                                                        </button>
-                                                        <button onClick={() => updateJobStatus(job.id, 'cancel')} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Cancel">
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {job.status === 'queued' && job.priority < 10 && (
-                                                    <>
-                                                        <button onClick={() => setPriority(job.id, 10)} className="btn btn-secondary" style={{ padding: '4px 8px' }} title="Prioritize">
-                                                            <ArrowUp size={14} />
-                                                        </button>
-                                                        <button onClick={() => updateJobStatus(job.id, 'cancel')} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Cancel">
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </>
-                                                )}
-                                                {job.status === 'queued' && job.priority >= 10 && (
-                                                    <button onClick={() => updateJobStatus(job.id, 'cancel')} className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Cancel">
-                                                        <Trash2 size={14} />
+                                                {/* Resume/Pause Button */}
+                                                {(job.status === 'running' || job.status === 'queued') && (
+                                                    <button onClick={() => updateJobStatus(job.id, 'pause')} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Pause">
+                                                        <Pause size={14} />
                                                     </button>
                                                 )}
-                                                {job.priority > 0 && job.status !== 'running' && <span style={{ fontSize: '0.8em', marginLeft: 8, alignSelf: 'center' }}>High</span>}
+                                                {job.status === 'paused' && (
+                                                    <button onClick={() => updateJobStatus(job.id, 'resume')} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Resume">
+                                                        <Play size={14} />
+                                                    </button>
+                                                )}
+
+                                                {/* Prioritize Button - Always Show */}
+                                                <button
+                                                    onClick={() => job.status !== 'running' && setPriority(job.id, 10)}
+                                                    disabled={['running', 'cancelled', 'completed', 'failed'].includes(job.status)}
+                                                    className={`btn ${job.status === 'running' ? 'btn-secondary' : 'btn-secondary'}`}
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        fontSize: '0.8rem',
+                                                        opacity: (['running', 'cancelled', 'completed', 'failed'].includes(job.status)) ? 0.5 : 1,
+                                                        cursor: (['running', 'cancelled', 'completed', 'failed'].includes(job.status)) ? 'not-allowed' : 'pointer'
+                                                    }}
+                                                    title={job.status === 'running' ? "Cannot prioritize running job" : "Prioritize"}
+                                                >
+                                                    <ArrowUp size={14} />
+                                                </button>
+
+                                                {/* Cancel Button */}
+                                                <button
+                                                    onClick={() => updateJobStatus(job.id, 'cancel')}
+                                                    disabled={!['running', 'queued', 'paused'].includes(job.status)}
+                                                    className="btn btn-danger"
+                                                    style={{
+                                                        padding: '4px 8px',
+                                                        fontSize: '0.8rem',
+                                                        opacity: (!['running', 'queued', 'paused'].includes(job.status)) ? 0.5 : 1,
+                                                        cursor: (!['running', 'queued', 'paused'].includes(job.status)) ? 'not-allowed' : 'pointer'
+                                                    }}
+                                                    title="Cancel"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -308,7 +313,7 @@ export default function Jobs() {
                             })}
                             {jobs.length === 0 && (
                                 <tr>
-                                    <td colSpan={8} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>
+                                    <td colSpan={6} style={{ textAlign: 'center', padding: 20, color: 'var(--text-muted)' }}>
                                         No jobs found matching your criteria.
                                     </td>
                                 </tr>

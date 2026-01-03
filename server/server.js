@@ -11,7 +11,7 @@ const { connect, listRemote, getConnectionConfig } = require('./sshManager');
 const { initScheduler, queueAllActive, updateSchedule } = require('./scheduler');
 
 // Start Worker (just by requiring it, the interval starts)
-const { processQueue, cancelJob, pauseJob, resumeJob, checkItemDiff } = require('./syncWorker');
+const { processQueue, cancelJob, pauseJob, resumeJob, preemptJob, checkItemDiff } = require('./syncWorker');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -271,6 +271,17 @@ app.delete('/api/sync/:id', async (req, res) => {
     try {
         const id = req.params.id;
 
+        // Cancel active jobs for this item
+        const activeJobs = db.prepare("SELECT id FROM jobs WHERE sync_item_id = ? AND status IN ('queued', 'running', 'paused', 'pausing')").all(id);
+        activeJobs.forEach(job => {
+            console.log(`Cancelling active job ${job.id} for deleted sync item ${id}`);
+            try {
+                cancelJob(job.id);
+            } catch (err) {
+                console.error(`Failed to cancel job ${job.id}:`, err);
+            }
+        });
+
         if (req.query.deleteFiles === 'true') {
             const item = db.prepare('SELECT local_path FROM sync_items WHERE id = ?').get(id);
             if (item && item.local_path) {
@@ -398,8 +409,34 @@ app.post('/api/jobs/manual', (req, res) => {
 
 app.post('/api/jobs/:id/priority', (req, res) => {
     const { priority } = req.body;
+    const targetId = req.params.id;
+
     try {
-        db.prepare('UPDATE jobs SET priority = ? WHERE id = ?').run(priority, req.params.id);
+        // 1. Pause other running jobs to free up bandwidth/slots
+        const runningJobs = db.prepare("SELECT id FROM jobs WHERE status IN ('running', 'pausing') AND id != ?").all(targetId);
+        runningJobs.forEach(job => {
+            console.log(`Preempting job ${job.id} to prioritize ${targetId}`);
+            try {
+                preemptJob(job.id);
+            } catch (e) {
+                console.error(`Failed to preempt job ${job.id}:`, e);
+            }
+        });
+
+        // 2. Update priority - Ensure it becomes the highest
+        const maxPriority = db.prepare('SELECT MAX(priority) as maxP FROM jobs').get().maxP || 10;
+        const newPriority = maxPriority + 1;
+
+        db.prepare('UPDATE jobs SET priority = ? WHERE id = ?').run(newPriority, targetId);
+        console.log(`Updated job ${targetId} priority to ${newPriority}`);
+
+        // 3. Auto-resume if paused (so it starts immediately)
+        const targetJob = db.prepare('SELECT status FROM jobs WHERE id = ?').get(targetId);
+        if (targetJob && targetJob.status === 'paused') {
+            console.log(`Auto-resuming prioritized job ${targetId}`);
+            resumeJob(targetId);
+        }
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: err.message });

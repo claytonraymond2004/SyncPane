@@ -169,6 +169,9 @@ async function performSync(job) {
 
                 tracker.totalBytes = plan.totalBytes;
 
+                console.log(`[Job ${job.id}] Sync Plan Generated: ${plan.files.length} files to sync (${plan.totalBytes} bytes).`);
+                console.log(`[Job ${job.id}] Target: ${item.local_path} <- ${item.remote_path}`);
+
                 // Update DB with total (this is now the transfer size)
                 db.prepare('UPDATE jobs SET total_bytes = ? WHERE id = ?').run(tracker.totalBytes, job.id);
 
@@ -370,6 +373,9 @@ function syncFile(sftp, task, tracker, checkInterruption) {
 
         try {
             // Updated to use start option for resume
+            const resumeMsg = startOffset > 0 ? `Resuming from ${startOffset} bytes` : 'Starting fresh';
+            console.log(`[Job ${tracker.jobId}] Downloading: ${remotePath} (${task.size} bytes) - ${resumeMsg}`);
+
             readStream = sftp.createReadStream(remotePath, { start: startOffset });
             writeStream = fs.createWriteStream(localPath, { flags });
         } catch (streamErr) {
@@ -386,8 +392,14 @@ function syncFile(sftp, task, tracker, checkInterruption) {
                 writeStream.destroy();
 
                 // We throw up to the parent loop to handle DB status updates
-                if (status === 'cancelled') reject(new Error('Cancelled by user'));
-                else if (status === 'paused') reject(new Error('Paused by user'));
+                if (status === 'cancelled') {
+                    console.log(`[Job ${tracker.jobId}] Transfer cancelled: ${remotePath}`);
+                    reject(new Error('Cancelled by user'));
+                }
+                else if (status === 'paused') {
+                    console.log(`[Job ${tracker.jobId}] Transfer paused: ${remotePath}`);
+                    reject(new Error('Paused by user'));
+                }
                 return;
             }
 
@@ -419,6 +431,7 @@ function syncFile(sftp, task, tracker, checkInterruption) {
             } catch (timeErr) {
                 console.warn(`Failed to set timestamp for ${localPath}:`, timeErr);
             }
+            console.log(`[Job ${tracker.jobId}] Completed: ${remotePath}`);
             resolve();
         });
 

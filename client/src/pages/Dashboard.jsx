@@ -292,6 +292,9 @@ export default function Dashboard() {
                                                     if (activeJob.status === 'queued') {
                                                         displayStatus = 'Queued';
                                                         displayClass = 'queued';
+                                                    } else if (activeJob.status === 'running') {
+                                                        displayStatus = 'Running';
+                                                        displayClass = 'running';
                                                     } else {
                                                         displayStatus = 'Pending';
                                                         displayClass = 'pending';

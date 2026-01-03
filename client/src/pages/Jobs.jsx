@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Activity, ArrowUp, Search, ChevronLeft, ChevronRight, Pause, Play, X, Trash2 } from 'lucide-react';
+import ConnectionErrorCountdown from '../components/ConnectionErrorCountdown';
 import ModalBackdrop from '../components/ModalBackdrop';
 
 export default function Jobs() {
@@ -207,17 +208,17 @@ export default function Jobs() {
                                             </span>
                                         </td>
                                         <td>
-                                            {job.status === 'running' && job.total_bytes > 0 ? (
+                                            {job.status === 'running' ? (
                                                 <div style={{ width: '100%' }}>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8em', marginBottom: 4 }}>
-                                                        <span>{formatBytes(job.processed_bytes)} / {formatBytes(job.total_bytes)}</span>
+                                                        <span>{job.total_bytes > 0 ? `${formatBytes(job.processed_bytes)} / ${formatBytes(job.total_bytes)}` : 'Preparing...'}</span>
                                                         <span>{Math.round(getProgress(job))}%</span>
                                                     </div>
                                                     <div style={{ background: 'rgba(255,255,255,0.1)', height: 6, borderRadius: 3, overflow: 'hidden' }}>
                                                         <div style={{
                                                             width: `${getProgress(job)}%`,
                                                             height: '100%',
-                                                            background: 'var(--primary)',
+                                                            background: job.log && job.log.toLowerCase().includes('connection lost') ? 'var(--warning)' : 'var(--primary)',
                                                             transition: 'width 0.5s ease'
                                                         }} />
                                                     </div>
@@ -225,6 +226,15 @@ export default function Jobs() {
                                                         <span>{job.current_speed ? `${formatBytes(job.current_speed)}/s` : '-'}</span>
                                                         <span>{job.eta_seconds ? `~${formatDuration(job.eta_seconds)} left` : '-'}</span>
                                                     </div>
+                                                    {/* Show Connection/Error Logs Inline */}
+                                                    {job.log && job.log.toLowerCase().includes('connection lost') ? (
+                                                        <ConnectionErrorCountdown log={job.log} />
+                                                    ) : job.log && (
+                                                        /* Generic error fallback */
+                                                        <div style={{ fontSize: '0.8em', color: 'var(--warning)', marginTop: 4, fontWeight: 500 }}>
+                                                            ⚠ {job.log}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : job.status === 'completed' ? (
                                                 <div style={{ fontSize: '0.85em', color: 'var(--success)' }}>
@@ -269,7 +279,7 @@ export default function Jobs() {
                                                         <Pause size={14} />
                                                     </button>
                                                 )}
-                                                {job.status === 'paused' && (
+                                                {(job.status === 'paused' || job.status === 'pausing') && (
                                                     <button onClick={() => updateJobStatus(job.id, 'resume')} className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '0.8rem' }} title="Resume">
                                                         <Play size={14} />
                                                     </button>

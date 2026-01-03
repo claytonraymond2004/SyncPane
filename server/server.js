@@ -404,6 +404,10 @@ app.post('/api/jobs/manual', (req, res) => {
         const jobId = uuid.v4();
         db.prepare('INSERT INTO jobs (id, type, sync_item_id, status, priority) VALUES (?, ?, ?, ?, ?)')
             .run(jobId, 'sync', syncItemId, 'queued', 10); // Higher priority for manual
+
+        // Clear previous error on the item so it looks "fresh" immediately
+        db.prepare("UPDATE sync_items SET error_message = NULL WHERE id = ?").run(syncItemId);
+
         res.json({ success: true, jobId });
     } catch (err) {
         res.status(500).json({ error: err.message });

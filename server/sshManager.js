@@ -24,6 +24,10 @@ function getConnectionConfig() {
     if (process.env.REMOTE_PASSWORD) config.password = process.env.REMOTE_PASSWORD; // Assumed plain in env for docker
     if (process.env.SSH_KEY_PATH) config.privateKey = require('fs').readFileSync(process.env.SSH_KEY_PATH);
 
+    // Keep-Alive Settings to detect dropped connections
+    config.keepaliveInterval = 10000; // Send keepalive every 10 seconds
+    config.keepaliveCountMax = 3;     // Disconnect after 3 failed keepalives (30s total)
+
     return config;
 }
 

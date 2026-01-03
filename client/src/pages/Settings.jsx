@@ -322,7 +322,7 @@ export default function Settings() {
                             </div>
 
                             <div style={{ paddingTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 16 }}>
-                                <button className="btn btn-primary" onClick={handleSaveGlobal} disabled={globalSaving}>
+                                <button className="btn btn-primary" onClick={() => handleSaveGlobal()} disabled={globalSaving}>
                                     {globalSaving ? <span className="spin"><Save size={16} /></span> : <Save size={16} />}
                                     <span>Save Policy</span>
                                 </button>

@@ -23,7 +23,12 @@ async function processQueue() {
         console.log(`Starting job ${job.id} (${job.type})`);
 
         // Mark running
-        db.prepare('UPDATE jobs SET status = ?, started_at = CURRENT_TIMESTAMP WHERE id = ?').run('running', job.id);
+        db.prepare('UPDATE jobs SET status = ?, started_at = CURRENT_TIMESTAMP, log = NULL WHERE id = ?').run('running', job.id);
+
+        // Update sync item status to active
+        if (job.sync_item_id) {
+            db.prepare("UPDATE sync_items SET status = 'syncing', error_message = NULL WHERE id = ?").run(job.sync_item_id);
+        }
 
         try {
             if (job.type === 'sync') {
@@ -81,7 +86,7 @@ const { getFolderSizes } = require('./sshManager');
 const activeJobControllers = new Map();
 
 function cancelJob(jobId) {
-    const job = db.prepare('SELECT status FROM jobs WHERE id = ?').get(jobId);
+    const job = db.prepare('SELECT status, sync_item_id FROM jobs WHERE id = ?').get(jobId);
     if (!job) return;
 
     // Check if it's in memory
@@ -95,10 +100,18 @@ function cancelJob(jobId) {
         } else {
             // Orphaned job (server restarted?) -> Force cancel
             db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Force cancelled (orphaned)' WHERE id = ?").run(jobId);
+            // Also clear sync item for orphaned jobs (clear error so it just shows Out of Sync)
+            if (job.sync_item_id) {
+                db.prepare("UPDATE sync_items SET status = 'pending', error_message = NULL WHERE id = ?").run(job.sync_item_id);
+            }
         }
     } else {
         // If queued or paused, just mark cancelled
         db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Cancelled by user' WHERE id = ?").run(jobId);
+        // Clear sync item for queued/paused
+        if (job.sync_item_id) {
+            db.prepare("UPDATE sync_items SET status = 'pending', error_message = NULL WHERE id = ?").run(job.sync_item_id);
+        }
     }
 }
 
@@ -135,6 +148,13 @@ function resumeJob(jobId) {
 
     if (job.status === 'paused') {
         db.prepare("UPDATE jobs SET status = 'queued' WHERE id = ?").run(jobId);
+    } else if (job.status === 'pausing') {
+        // Recover from pausing state immediately
+        db.prepare("UPDATE jobs SET status = 'running', log = NULL WHERE id = ?").run(jobId);
+        if (activeJobControllers.has(jobId)) {
+            activeJobControllers.get(jobId).pause = false;
+            console.log(`Job ${jobId} resume requested while pausing. Reverted to running.`);
+        }
     }
 }
 
@@ -149,9 +169,6 @@ async function performSync(job) {
         db.prepare('UPDATE sync_items SET active = 0, status = ? WHERE id = ?').run('unsynced - local missing', item.id);
         throw new Error('Local file/folder missing. Sync disabled due to local deletion.');
     }
-
-    const timeoutMins = parseInt(db.prepare('SELECT value FROM config WHERE key = ?').get('connection_timeout_minutes')?.value || '60');
-    const CONNECTION_TIMEOUT_MS = timeoutMins * 60 * 1000;
 
     // Register Controller
     activeJobControllers.set(job.id, { cancel: false, pause: false, preempt: false });
@@ -205,6 +222,8 @@ async function performSync(job) {
                 if (outageStart) {
                     console.log(`[Job ${job.id}] Connection restored after ${(Date.now() - outageStart) / 1000}s`);
                     outageStart = null;
+                    // Clear connection error logs
+                    db.prepare("UPDATE jobs SET log = NULL WHERE id = ?").run(job.id);
                 }
                 attempts = 0; // Reset attempts on successful connection
                 return; // Exit loop
@@ -215,19 +234,38 @@ async function performSync(job) {
                 if (!outageStart) outageStart = Date.now();
                 const outageDuration = Date.now() - outageStart;
 
-                if (outageDuration > CONNECTION_TIMEOUT_MS) {
-                    throw new Error(`Connection timeout exceeded (${timeoutMins} mins). Last error: ${err.message}`);
-                }
+                // Re-fetch timeout config dynamically to support live updates
+                const currentTimeoutMins = parseInt(db.prepare('SELECT value FROM config WHERE key = ?').get('connection_timeout_minutes')?.value || '60');
+                const currentTimeoutMs = currentTimeoutMins * 60 * 1000;
 
-                // Update Status to warn user
-                db.prepare("UPDATE jobs SET log = ? WHERE id = ?").run(`Connection lost. Retrying... (${Math.floor(outageDuration / 1000)}s)`, job.id);
+                if (outageDuration > currentTimeoutMs) {
+                    throw new Error(`Connection timeout exceeded (${currentTimeoutMins} mins). Last error: ${err.message}`);
+                }
 
                 // Exponential backoff: 1s, 2s, 4s, 8s, 16s, 30s...
                 const delay = Math.min(30000, 1000 * Math.pow(2, attempts));
                 attempts++;
 
-                console.log(`[Job ${job.id}] Waiting ${delay}ms before retry (Attempt ${attempts})`);
-                await new Promise(r => setTimeout(r, delay));
+                // Calculate target times for UI countdowns
+                const now = Date.now();
+                const retryTarget = new Date(now + delay).toISOString();
+                const timeoutTarget = new Date(outageStart + currentTimeoutMs).toISOString();
+
+                // Format: "Connection lost: Error msg. Next retry at ISO_DATE. Timeout at ISO_DATE."
+                // The UI will parse "Next retry at" and "Timeout at" key phrases.
+                const logMsg = `Connection lost: ${err.message}. Next retry at ${retryTarget}. Timeout at ${timeoutTarget}.`;
+
+                console.warn(`[Job ${job.id}] ${logMsg}`);
+
+                // Update Status to warn user + Reset speed/ETA
+                db.prepare("UPDATE jobs SET log = ?, current_speed = 0, eta_seconds = NULL WHERE id = ?").run(logMsg, job.id);
+
+                // Interruptible Sleep
+                const sleepStart = Date.now();
+                while (Date.now() - sleepStart < delay) {
+                    if (checkInterruption()) throw new Error(getInterruptionMessage(checkInterruption()));
+                    await new Promise(r => setTimeout(r, 200)); // Check every 200ms
+                }
             }
         }
     };
@@ -264,7 +302,10 @@ async function performSync(job) {
 
             } catch (err) {
                 if (isNetError(err)) {
-                    console.log(`[Job ${job.id}] Network error during planning. Retrying...`);
+                    const msg = `Connection lost: ${err.message}. Retrying...`;
+                    console.log(`[Job ${job.id}] ${msg}`);
+                    db.prepare("UPDATE jobs SET log = ?, current_speed = 0, eta_seconds = NULL WHERE id = ?").run(msg, job.id);
+
                     await ensureConnection();
                     // Loop continues and tries generateSyncPlan again
                 } else {
@@ -295,7 +336,10 @@ async function performSync(job) {
                     }
 
                     if (isNetError(err)) {
-                        console.log(`[Job ${job.id}] Network error during sync of ${fileTask.remotePath}. Retrying...`);
+                        const msg = `Connection lost: ${err.message}. Retrying...`;
+                        console.log(`[Job ${job.id}] ${msg}`);
+                        db.prepare("UPDATE jobs SET log = ?, current_speed = 0, eta_seconds = NULL WHERE id = ?").run(msg, job.id);
+
                         await ensureConnection();
                         // Loop continues and retries same file
                     } else {
@@ -326,12 +370,19 @@ async function performSync(job) {
         // Handle Status Updates based on specific error messages
         if (finalErr.message === 'Cancelled by user') {
             db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Cancelled by user' WHERE id = ?").run(job.id);
+            // Clear error so UI just shows 'Out of Sync'
+            db.prepare("UPDATE sync_items SET status = 'pending', error_message = NULL WHERE id = ?").run(job.sync_item_id);
             return;
         } else if (finalErr.message === 'Paused by user') {
             db.prepare("UPDATE jobs SET status = 'paused', log = 'Paused by user' WHERE id = ?").run(job.id);
+            // Pause is acceptable to show, but user requested 'Cancelled' be hidden. Let's hide Pause too for consistency if requested "cancelled... or any other reason"
+            // Wait, actually "Paused by user" explains why it stopped. "Cancelled" -> User assumes it stopped.
+            // The user said "cancelled by user or any other reason". I will clear error for pause too to be safe.
+            db.prepare("UPDATE sync_items SET status = 'pending', error_message = NULL WHERE id = ?").run(job.sync_item_id);
             return;
         } else if (finalErr.message === 'Preempted') {
             db.prepare("UPDATE jobs SET status = 'queued', log = 'Preempted by priority job' WHERE id = ?").run(job.id);
+            db.prepare("UPDATE sync_items SET status = 'pending', error_message = NULL WHERE id = ?").run(job.sync_item_id);
             return;
         }
 
@@ -364,6 +415,8 @@ function isNetError(err) {
         msg.includes('time') ||
         msg.includes('closed') ||
         msg.includes('end') ||
+        msg.includes('response') || // 'No response from server'
+        msg.includes('cleanup') || // 'Channel cleanup'
         err.code === 'ECONNRESET' ||
         err.code === 'ENOTFOUND' ||
         err.code === 'ETIMEDOUT'
@@ -530,11 +583,31 @@ function syncFile(sftp, task, tracker, checkInterruption) {
             return resolve();
         }
 
+        // Watchdog for silent network drops
+        let lastDataTime = Date.now();
+        const DATA_TIMEOUT = 20000; // 20s timeout
+
+        const watchdog = setInterval(() => {
+            if (interrupted || completed) {
+                clearInterval(watchdog);
+                return;
+            }
+            if (Date.now() - lastDataTime > DATA_TIMEOUT) {
+                clearInterval(watchdog);
+                const msg = 'Data transfer timeout (20s) - assumed connection lost';
+                console.warn(`[Job ${tracker.jobId}] ${msg}`);
+                readStream.destroy(new Error(msg));
+            }
+        }, 2000); // Check every 2s
+
         readStream.on('data', (chunk) => {
+            lastDataTime = Date.now();
+
             // Check for interruption during transfer
             const status = checkInterruption ? checkInterruption() : null;
             if (status) {
                 interrupted = true;
+                clearInterval(watchdog);
                 readStream.destroy();
                 writeStream.destroy();
 
@@ -559,21 +632,31 @@ function syncFile(sftp, task, tracker, checkInterruption) {
         });
 
         readStream.on('error', (err) => {
+            clearInterval(watchdog);
             if (interrupted) return; // Ignore errors caused by destroy()
-            tracker.failedItems.push({ path: remotePath, error: err.message });
+            if (completed) return; // Prevent double reject
+            completed = true; // Mark completed to prevent 'finish' handler
+
+            // We reject here so performSync can decide to retry (if net error) or log failure
             writeStream.end();
-            resolve();
+            reject(err);
         });
 
         writeStream.on('error', (err) => {
+            clearInterval(watchdog);
             if (interrupted) return;
-            tracker.failedItems.push({ path: remotePath, error: 'Write error: ' + err.message });
+            if (completed) return; // Ignore if already finished (rare race)
+            completed = true; // Mark completed to prevent 'finish' handler
+
             readStream.destroy();
-            resolve();
+            reject(new Error('Write error: ' + err.message));
         });
 
         writeStream.on('finish', () => {
+            clearInterval(watchdog);
             if (interrupted) return;
+            // Prevent race where error happened but stream still 'finished'
+            if (completed) return;
             completed = true;
 
             // SUCCESS - Update mtime to match remote!
@@ -628,16 +711,13 @@ async function checkItemDiff(itemId) {
         conn.end();
 
         if (plan.files.length > 0) {
-            // If restored but outdated, still clear the specific missing error
-            if (item.error_message === 'Local file/folder missing. Sync disabled due to local deletion.') {
-                db.prepare("UPDATE sync_items SET status = 'synced', error_message = NULL WHERE id = ?").run(item.id);
-            }
+            // Check succeeded -> Clear any previous network errors and mark as pending sync
+            db.prepare("UPDATE sync_items SET status = 'pending', error_message = NULL WHERE id = ?").run(item.id);
             return { status: 'outdated', diffCount: plan.files.length, diffSize: plan.totalBytes, diffFiles: plan.files };
         } else {
-            // Fully synced + recovered
-            if (item.error_message === 'Local file/folder missing. Sync disabled due to local deletion.') {
-                db.prepare("UPDATE sync_items SET status = 'synced', error_message = NULL WHERE id = ?").run(item.id);
-            }
+
+            // Check succeeded -> Fully synced -> Clear errors
+            db.prepare("UPDATE sync_items SET status = 'synced', error_message = NULL WHERE id = ?").run(item.id);
             return { status: 'synced' };
         }
 
@@ -651,10 +731,18 @@ async function checkItemDiff(itemId) {
 // Cleanup zombie jobs on startup
 function cleanupZombieJobs() {
     try {
+        // 1. Recover running/pausing -> queued
         const result = db.prepare("UPDATE jobs SET status = 'queued', log = 'Recovered from crash/restart' WHERE status IN ('running', 'pausing')").run();
         if (result.changes > 0) {
             console.log(`Recovered ${result.changes} zombie jobs (reset to queued).`);
         }
+
+        // 2. Recover cancelling -> cancelled
+        const resultCancel = db.prepare("UPDATE jobs SET status = 'cancelled', completed_at = CURRENT_TIMESTAMP, log = 'Cancelled (cleanup on restart)' WHERE status = 'cancelling'").run();
+        if (resultCancel.changes > 0) {
+            console.log(`Cleaned up ${resultCancel.changes} cancelling jobs (marked as cancelled).`);
+        }
+
     } catch (err) {
         console.error('Failed to cleanup zombie jobs:', err);
     }

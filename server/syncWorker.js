@@ -413,6 +413,14 @@ async function checkItemDiff(itemId) {
     const item = db.prepare('SELECT * FROM sync_items WHERE id = ?').get(itemId);
     if (!item) throw new Error('Item not found');
 
+    // 0. Pre-check for local deletion
+    if (!fs.existsSync(item.local_path)) {
+        const msg = 'Local file/folder missing. Sync disabled due to local deletion.';
+        db.prepare('UPDATE sync_items SET active = 0, status = ?, error_message = ? WHERE id = ?')
+            .run('error', msg, item.id);
+        return { status: 'local_missing', error: msg };
+    }
+
     let conn;
     try {
         conn = await connect();

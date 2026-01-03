@@ -174,7 +174,7 @@ export default function Dashboard() {
                             </thead>
                             <tbody>
                                 {items.map(item => (
-                                    <tr key={item.id} style={{ opacity: item.active ? 1 : 0.5 }}>
+                                    <tr key={item.id} style={{ opacity: (!item.active || liveDiffs[item.id]?.status === 'local_missing') ? 0.5 : 1 }}>
                                         <td>{item.type === 'folder' ? '📁' : '📄'}</td>
                                         <td style={{ fontFamily: 'monospace' }}>{item.remote_path}</td>
                                         <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{item.local_path}</td>
@@ -194,6 +194,11 @@ export default function Dashboard() {
                                                 )}
                                                 {liveDiffs[item.id]?.status === 'synced' && (
                                                     <span style={{ color: 'var(--success)' }}>✔ Up to date</span>
+                                                )}
+                                                {liveDiffs[item.id]?.status === 'local_missing' && !item.error_message && (
+                                                    <span style={{ color: 'var(--error)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                        <AlertCircle size={14} /> {liveDiffs[item.id].error}
+                                                    </span>
                                                 )}
                                                 {liveDiffs[item.id]?.status === 'outdated' && (
                                                     <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>

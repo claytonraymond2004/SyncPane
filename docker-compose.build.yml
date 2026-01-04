@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    container_name: selective-sync
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      # Persist configuration and database
+      - ./data:/app/data
+      # Mount the host directory you want to sync TO
+      # Example: Syncing to your local Downloads folder
+      # - ~/Downloads:/sync/Downloads
+      - ./sync/:/app/sync/
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production

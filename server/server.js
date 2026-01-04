@@ -610,13 +610,16 @@ app.post('/api/maintenance/reset-app', async (req, res) => {
 // Serve frontend in production
 if (process.env.NODE_ENV === 'production') {
     app.use(express.static(path.join(__dirname, '../client/dist')));
-    app.get('*', (req, res) => {
+
+    app.get(/.*/, (req, res) => {
         res.sendFile(path.join(__dirname, '../client/dist/index.html'));
     });
 }
 
 // Start
 initScheduler();
+
+
 
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);

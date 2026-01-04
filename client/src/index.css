@@ -539,3 +539,32 @@ tr:last-child td {
     display: none !important;
   }
 }
+
+/* Toast Notifications */
+.toast-container {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 10000;
+  pointer-events: none;
+
+  /* Desktop & Default: Top Right */
+  top: 20px;
+  right: 20px;
+  bottom: auto;
+  left: auto;
+  align-items: flex-end;
+}
+
+@media (max-width: 900px) {
+  .toast-container {
+    /* Mobile: Bottom Center */
+    top: auto;
+    bottom: 20px;
+    left: 0;
+    right: 0;
+    align-items: center;
+    width: 100%;
+  }
+}

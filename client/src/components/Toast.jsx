@@ -7,18 +7,7 @@ export default function ToastContainer({ toasts, removeToast }) {
     if (!toasts || toasts.length === 0) return null;
 
     return createPortal(
-        <div style={{
-            position: 'fixed',
-            bottom: 20,
-            left: 0,
-            right: 0,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 10,
-            zIndex: 10000,
-            pointerEvents: 'none' // Allow clicking through the container area
-        }}>
+        <div className="toast-container">
             {toasts.map(toast => (
                 <Toast key={toast.id} toast={toast} onClose={() => removeToast(toast.id)} />
             ))}

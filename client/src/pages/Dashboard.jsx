@@ -284,7 +284,7 @@ export default function Dashboard() {
                                         <th style={{ width: '25%' }}>Local Path</th>
                                         <th style={{ width: 120 }}>Status</th>
                                         <th style={{ width: 160 }}>Last Synced</th>
-                                        <th style={{ textAlign: 'right', width: 160 }}>Actions</th>
+                                        <th style={{ textAlign: 'right', width: 190 }}>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>

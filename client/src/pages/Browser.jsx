@@ -70,7 +70,7 @@ export default function Browser() {
 
     useEffect(() => {
         if (modalOpen) {
-            fetch('http://localhost:3001/api/sync-locations').then(res => res.json()).then(setSyncLocations);
+            fetch('/api/sync-locations').then(res => res.json()).then(setSyncLocations);
             setSyncError(null); // Clear previous errors
         }
     }, [modalOpen]);
@@ -169,7 +169,7 @@ export default function Browser() {
         setFolderSizes({}); // Clear previous sizes
         setError(null);
         try {
-            const res = await fetch(`http://localhost:3001/api/remote/list?path=${encodeURIComponent(p)}`);
+            const res = await fetch(`/api/remote/list?path=${encodeURIComponent(p)}`);
             const data = await res.json();
 
             if (res.ok) {
@@ -218,7 +218,7 @@ export default function Browser() {
 
     const fetchSizes = async (paths) => {
         try {
-            const res = await fetch('http://localhost:3001/api/remote/folders/sizes', {
+            const res = await fetch('/api/remote/folders/sizes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ paths })
@@ -262,7 +262,7 @@ export default function Browser() {
         }
 
         try {
-            const res = await fetch('http://localhost:3001/api/sync', {
+            const res = await fetch('/api/sync', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

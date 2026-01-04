@@ -25,7 +25,8 @@ export default function LocalBrowser({ onClose, onSelect, currentPath = '/' }) {
             if (target !== '/' && target.endsWith('/')) {
                 target = target.slice(0, -1);
             }
-            const res = await fetch(`http://localhost:3001/api/local/list?path=${encodeURIComponent(target)}`);
+
+            const res = await fetch(`/api/local/list?path=${encodeURIComponent(target)}`);
             const data = await res.json();
 
             if (res.ok) {

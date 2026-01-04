@@ -21,7 +21,7 @@ export default function Jobs() {
                 limit: itemsPerPage,
                 search
             });
-            const res = await fetch(`http://localhost:3001/api/jobs?${params}`);
+            const res = await fetch(`/api/jobs?${params}`);
             const data = await res.json();
 
             if (data.pagination) {
@@ -40,7 +40,7 @@ export default function Jobs() {
 
     const pauseAll = async () => {
         try {
-            await fetch('http://localhost:3001/api/jobs/pause-all', { method: 'POST' });
+            await fetch('/api/jobs/pause-all', { method: 'POST' });
             fetchJobs();
         } catch (err) {
             console.error('Failed to pause all:', err);
@@ -49,7 +49,7 @@ export default function Jobs() {
 
     const resumeAll = async () => {
         try {
-            await fetch('http://localhost:3001/api/jobs/resume-all', { method: 'POST' });
+            await fetch('/api/jobs/resume-all', { method: 'POST' });
             fetchJobs();
         } catch (err) {
             console.error('Failed to resume all:', err);
@@ -63,7 +63,7 @@ export default function Jobs() {
     }, [page, itemsPerPage, search]); // Re-fetch when params change
 
     const setPriority = async (id, priority) => {
-        await fetch(`http://localhost:3001/api/jobs/${id}/priority`, {
+        await fetch(`/api/jobs/${id}/priority`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ priority })
@@ -74,7 +74,7 @@ export default function Jobs() {
     const updateJobStatus = async (id, action) => {
         // action: 'cancel', 'pause', 'resume'
         try {
-            await fetch(`http://localhost:3001/api/jobs/${id}/${action}`, {
+            await fetch(`/api/jobs/${id}/${action}`, {
                 method: 'POST'
             });
             fetchJobs();

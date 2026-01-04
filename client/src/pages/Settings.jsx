@@ -85,9 +85,9 @@ export default function Settings() {
 
     useEffect(() => {
         Promise.all([
-            fetch('http://localhost:3001/api/settings').then(res => res.json()),
-            fetch('http://localhost:3001/api/config').then(res => res.json()),
-            fetch('http://localhost:3001/api/sync-locations').then(res => res.json())
+            fetch('/api/settings').then(res => res.json()),
+            fetch('/api/config').then(res => res.json()),
+            fetch('/api/sync-locations').then(res => res.json())
         ]).then(([settingsData, sshData, locData]) => {
             setGlobalConfig(settingsData);
             setOriginalGlobalConfig(settingsData);
@@ -122,7 +122,7 @@ export default function Settings() {
         const configToSave = overrideConfig || globalConfig;
         setGlobalSaving(true);
         try {
-            await fetch('http://localhost:3001/api/settings', {
+            await fetch('/api/settings', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(configToSave)
@@ -164,7 +164,7 @@ export default function Settings() {
         e.preventDefault();
         addToast('Testing connection...', 'warning', 2000);
         try {
-            const res = await fetch('http://localhost:3001/api/config/test', {
+            const res = await fetch('/api/config/test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(sshConfig)
@@ -182,7 +182,7 @@ export default function Settings() {
         if (!skipTest) addToast('Verifying connection...', 'warning', 2000);
 
         try {
-            const res = await fetch('http://localhost:3001/api/config', {
+            const res = await fetch('/api/config', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...sshConfig, skipTest })
@@ -234,7 +234,7 @@ export default function Settings() {
         const path = pathToAdd || newLoc;
         if (!path) return;
 
-        await fetch('http://localhost:3001/api/sync-locations', {
+        await fetch('/api/sync-locations', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ path: path, label: '' })
@@ -245,7 +245,7 @@ export default function Settings() {
     };
 
     const fetchLocations = () => {
-        fetch('http://localhost:3001/api/sync-locations').then(res => res.json()).then(setLocations);
+        fetch('/api/sync-locations').then(res => res.json()).then(setLocations);
     };
 
     const deleteLocation = (id) => {
@@ -256,7 +256,7 @@ export default function Settings() {
             confirmLabel: 'Remove',
             isDestructive: true,
             onConfirm: async () => {
-                await fetch(`http://localhost:3001/api/sync-locations/${id}`, { method: 'DELETE' });
+                await fetch(`/api/sync-locations/${id}`, { method: 'DELETE' });
                 fetchLocations();
                 setModalConfig(prev => ({ ...prev, isOpen: false }));
             }
@@ -266,7 +266,7 @@ export default function Settings() {
     // --- Maintenance Handlers ---
     const handlePurgeHistory = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/maintenance/purge-jobs', {
+            const res = await fetch('/api/maintenance/purge-jobs', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ days: purgeDays })
@@ -292,7 +292,7 @@ export default function Settings() {
             isWarning: true,
             onConfirm: async () => {
                 try {
-                    const res = await fetch('http://localhost:3001/api/maintenance/reset-app', { method: 'POST' });
+                    const res = await fetch('/api/maintenance/reset-app', { method: 'POST' });
                     const data = await res.json();
                     if (data.success) {
                         addToast('Application reset successfully. Reloading...', 'success');

@@ -24,7 +24,7 @@ export default function Dashboard() {
 
     const fetchItems = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/sync');
+            const res = await fetch('/api/sync');
             const data = await res.json();
             setItems(data);
 
@@ -45,7 +45,7 @@ export default function Dashboard() {
         setIsRefreshing(true);
         try {
             // 1. Fetch DB items
-            const res = await fetch('http://localhost:3001/api/sync');
+            const res = await fetch('/api/sync');
             const data = await res.json();
             setItems(data);
 
@@ -66,7 +66,7 @@ export default function Dashboard() {
     const checkLiveStatus = async (id) => {
         setLiveDiffs(prev => ({ ...prev, [id]: { status: 'checking' } }));
         try {
-            const res = await fetch(`http://localhost:3001/api/sync/${id}/status`);
+            const res = await fetch(`/api/sync/${id}/status`);
             const status = await res.json();
             setLiveDiffs(prev => ({ ...prev, [id]: status }));
         } catch (err) {
@@ -94,7 +94,7 @@ export default function Dashboard() {
     };
 
     const performManualSync = async (id) => {
-        await fetch('http://localhost:3001/api/jobs/manual', {
+        await fetch('/api/jobs/manual', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ syncItemId: id })
@@ -121,7 +121,7 @@ export default function Dashboard() {
     };
 
     const performToggle = async (id, current) => {
-        await fetch(`http://localhost:3001/api/sync/${id}/toggle`, {
+        await fetch(`/api/sync/${id}/toggle`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ active: !current })
@@ -142,13 +142,13 @@ export default function Dashboard() {
     };
 
     const performDelete = async (id) => {
-        await fetch(`http://localhost:3001/api/sync/${id}?deleteFiles=true`, { method: 'DELETE' });
+        await fetch(`/api/sync/${id}?deleteFiles=true`, { method: 'DELETE' });
         fetchItems();
         setModalConfig({ ...modalConfig, isOpen: false }); // Close modal after action
     };
 
     const resumeJob = async (jobId) => {
-        await fetch(`http://localhost:3001/api/jobs/${jobId}/resume`, { method: 'POST' });
+        await fetch(`/api/jobs/${jobId}/resume`, { method: 'POST' });
         // Give it a moment to update status
         setTimeout(fetchItems, 500);
     };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FileText, ArrowUp, Download, X, ChevronUp, ChevronDown } from 'lucide-react';
+import { Folder, FileText, ArrowUp, Download, X, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import ModalBackdrop from '../components/ModalBackdrop';
 import LocalBrowser from '../components/LocalBrowser';
 
@@ -367,9 +367,9 @@ export default function Browser() {
             {/* ... header ... */}
             <div className="header">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div>
+                    <div style={{ width: '100%' }}>
                         <h1 className="page-title">Remote Browser</h1>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, color: 'var(--text-muted)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, color: 'var(--text-muted)', width: '100%' }}>
                             <button
                                 onClick={handleUp}
                                 disabled={path === '/'}
@@ -387,7 +387,7 @@ export default function Browser() {
                             >
                                 <ArrowUp size={16} color="white" />
                             </button>
-                            <div className="breadcrumbs" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                            <div className="breadcrumbs-desktop">
                                 <button
                                     onClick={() => handleNavigate('/')}
                                     style={{
@@ -434,6 +434,38 @@ export default function Browser() {
                                         </button>
                                     );
                                 })}
+                            </div>
+
+                            <div className="breadcrumbs-mobile" style={{ flex: 1 }}>
+                                <div style={{ position: 'relative', width: '100%', display: 'flex' }}>
+                                    <select
+                                        value={path}
+                                        onChange={(e) => handleNavigate(e.target.value)}
+                                        style={{
+                                            appearance: 'none',
+                                            width: '100%',
+                                            background: 'rgba(255,255,255,0.05)',
+                                            border: '1px solid rgba(255,255,255,0.2)',
+                                            borderRadius: 6,
+                                            padding: '8px 30px 8px 12px',
+                                            color: 'white',
+                                            fontSize: '0.9em',
+                                            outline: 'none',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        <option value="/">root</option>
+                                        {path.split('/').filter(Boolean).map((segment, index, arr) => {
+                                            const segmentPath = '/' + arr.slice(0, index + 1).join('/');
+                                            return (
+                                                <option key={segmentPath} value={segmentPath}>
+                                                    {segmentPath}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+                                    <ChevronDown size={14} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }} />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -491,7 +523,6 @@ export default function Browser() {
                         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                             <thead>
                                 <tr>
-                                    <th style={{ width: 40 }}></th>
                                     <th onClick={() => handleSort('name')}>
                                         <div style={headerStyle}>Name <SortIcon columnKey="name" /></div>
                                     </th>
@@ -523,7 +554,11 @@ export default function Browser() {
                                             id={`file-row-${index}`}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                setHighlightedPath(file.path);
+                                                if (isSelected && file.type === 'folder') {
+                                                    handleNavigate(file.path);
+                                                } else {
+                                                    setHighlightedPath(file.path);
+                                                }
                                             }}
                                             onDoubleClick={() => {
                                                 if (file.type === 'folder') {
@@ -538,26 +573,57 @@ export default function Browser() {
                                             }}
                                             className="file-row"
                                         >
-                                            <td>{file.type === 'folder' ? <Folder color={isSelected ? 'var(--primary)' : "var(--primary)"} size={20} /> : <FileText color="var(--text-muted)" size={20} />}</td>
                                             <td>
-                                                <span style={{
-                                                    fontWeight: file.type === 'folder' ? 500 : 400,
-                                                    color: isSelected ? 'white' : 'var(--text-main)'
-                                                }}>
-                                                    {file.name}
-                                                </span>
+                                                <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                                    <div style={{ marginRight: 12, display: 'flex', alignItems: 'center' }}>
+                                                        {file.type === 'folder' ? <Folder color={isSelected ? 'var(--primary)' : "var(--primary)"} size={20} /> : <FileText color="var(--text-muted)" size={20} />}
+                                                    </div>
+                                                    <span style={{
+                                                        fontWeight: file.type === 'folder' ? 500 : 400,
+                                                        color: isSelected ? 'white' : 'var(--text-main)',
+                                                        flex: 1,
+                                                        overflow: 'hidden',
+                                                        textOverflow: 'ellipsis',
+                                                        whiteSpace: 'nowrap',
+                                                        marginRight: 8
+                                                    }}>
+                                                        {file.name}
+                                                    </span>
+                                                    {file.type === 'folder' && (
+                                                        <button
+                                                            className="btn-icon"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleNavigate(file.path);
+                                                            }}
+                                                            style={{
+                                                                background: 'none',
+                                                                border: 'none',
+                                                                padding: 4,
+                                                                cursor: 'pointer',
+                                                                color: isSelected ? 'white' : 'var(--text-muted)',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                flexShrink: 0
+                                                            }}
+                                                            title="Open Folder"
+                                                        >
+                                                            <ChevronRight size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </td>
-                                            <td style={{ fontSize: '0.9em', color: 'var(--text-muted)' }}>
+                                            <td data-label="Size" style={{ fontSize: '0.9em', color: 'var(--text-muted)' }}>
                                                 {
                                                     file.type === 'folder'
                                                         ? (folderSizes[file.path] !== undefined ? formatBytes(folderSizes[file.path]) : '-')
                                                         : formatBytes(file.size)
                                                 }
                                             </td>
-                                            <td style={{ fontSize: '0.9em', color: 'var(--text-muted)' }}>
+                                            <td data-label="Date Modified" style={{ fontSize: '0.9em', color: 'var(--text-muted)' }}>
                                                 {formatDate(file.mtime)}
                                             </td>
-                                            <td style={{ fontSize: '0.9em', color: 'var(--text-muted)' }}>
+                                            <td data-label="Last Accessed" style={{ fontSize: '0.9em', color: 'var(--text-muted)' }}>
                                                 {formatDate(file.atime)}
                                             </td>
                                             <td style={{ textAlign: 'right' }}>

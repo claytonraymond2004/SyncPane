@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Folder, FileText, ArrowUp, Check, X, Loader } from 'lucide-react';
+import { Folder, FileText, ArrowUp, Check, X, Loader, ChevronRight } from 'lucide-react';
 import ModalBackdrop from './ModalBackdrop';
 
 export default function LocalBrowser({ onClose, onSelect, currentPath = '/' }) {
@@ -123,7 +123,6 @@ export default function LocalBrowser({ onClose, onSelect, currentPath = '/' }) {
                         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead style={{ position: 'sticky', top: 0, background: '#1a1a1a', zIndex: 1 }}>
                                 <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                                    <th style={{ padding: 8, textAlign: 'left', width: 40 }}></th>
                                     <th style={{ padding: 8, textAlign: 'left' }}>Name</th>
                                 </tr>
                             </thead>
@@ -141,15 +140,40 @@ export default function LocalBrowser({ onClose, onSelect, currentPath = '/' }) {
                                             }}
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                setSelectedFolder(file.path);
+                                                if (isSelected) {
+                                                    handleNavigate(file.path);
+                                                } else {
+                                                    setSelectedFolder(file.path);
+                                                }
                                             }}
                                             onDoubleClick={() => handleNavigate(file.path)}
                                         >
-                                            <td style={{ padding: 8 }}>
-                                                <Folder color={isSelected ? 'var(--primary)' : "var(--text-muted)"} size={18} />
-                                            </td>
                                             <td style={{ padding: 8, fontWeight: isSelected ? 600 : 400 }}>
-                                                {file.name}
+                                                <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                                    <div style={{ marginRight: 12, display: 'flex', alignItems: 'center' }}>
+                                                        <Folder color={isSelected ? 'var(--primary)' : "var(--text-muted)"} size={18} />
+                                                    </div>
+                                                    <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginRight: 8 }}>{file.name}</span>
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            handleNavigate(file.path);
+                                                        }}
+                                                        style={{
+                                                            background: 'none',
+                                                            border: 'none',
+                                                            padding: 4,
+                                                            cursor: 'pointer',
+                                                            color: isSelected ? 'white' : 'var(--text-muted)',
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            flexShrink: 0
+                                                        }}
+                                                        title="Open Folder"
+                                                    >
+                                                        <ChevronRight size={16} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     );

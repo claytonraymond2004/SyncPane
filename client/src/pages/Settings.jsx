@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Save, Plus, X, Folder, FileText, ArrowLeft, Activity, Server, Globe, Settings as SettingsIcon, Trash2, AlertTriangle } from 'lucide-react';
+import { Save, Plus, X, Folder, FileText, ArrowLeft, Activity, Server, Globe, Settings as SettingsIcon, Trash2, AlertTriangle, Wrench } from 'lucide-react';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ToastContainer from '../components/Toast';
 import LocalBrowser from '../components/LocalBrowser';
@@ -483,7 +483,7 @@ export default function Settings() {
                                 </div>
                             </div>
                         )}
-                        <form onSubmit={(e) => handleSaveSSH(e)} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                        <form action="#" onSubmit={(e) => handleSaveSSH(e)} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                             <div style={{ gridColumn: 'span 2' }}>
                                 <label style={{ display: 'block', marginBottom: 8, fontSize: '0.9em', color: 'var(--text-muted)' }}>Host / IP</label>
                                 <input
@@ -561,8 +561,8 @@ export default function Settings() {
                                     </div>
 
                                     {authMethod === 'password' && (
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <div style={{ marginTop: 8 }}>
+                                            <div className="input-group-responsive">
                                                 <input
                                                     type="password"
                                                     value={sshConfig.password || ''}
@@ -574,17 +574,20 @@ export default function Settings() {
                                                     <button
                                                         type="button"
                                                         onClick={handleClearPassword}
+                                                        className="btn"
                                                         style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
+                                                            justifyContent: 'center',
                                                             gap: 6,
-                                                            padding: '8px 12px',
+                                                            padding: '12px',
                                                             border: '1px solid var(--danger)',
                                                             borderRadius: 8,
                                                             background: 'rgba(220, 38, 38, 0.1)',
                                                             color: 'var(--danger)',
                                                             cursor: 'pointer',
-                                                            transition: 'all 0.2s'
+                                                            transition: 'all 0.2s',
+                                                            whiteSpace: 'nowrap'
                                                         }}
                                                         title="Clear Password"
                                                     >
@@ -597,14 +600,14 @@ export default function Settings() {
                                     )}
 
                                     {authMethod === 'key' && (
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                        <div style={{ marginTop: 8 }}>
+                                            <div className="input-group-responsive">
                                                 <input
                                                     type="file"
                                                     onChange={handleKeyUpload}
                                                     style={{
                                                         flex: 1,
-                                                        padding: '8px',
+                                                        padding: '12px',
                                                         borderRadius: 8,
                                                         border: '1px solid rgba(255,255,255,0.1)',
                                                         background: 'rgba(0,0,0,0.2)',
@@ -620,17 +623,20 @@ export default function Settings() {
                                                     <button
                                                         type="button"
                                                         onClick={handleClearKey}
+                                                        className="btn"
                                                         style={{
                                                             display: 'flex',
                                                             alignItems: 'center',
+                                                            justifyContent: 'center',
                                                             gap: 6,
-                                                            padding: '8px 12px',
+                                                            padding: '12px',
                                                             border: '1px solid var(--danger)',
                                                             borderRadius: 8,
                                                             background: 'rgba(220, 38, 38, 0.1)',
                                                             color: 'var(--danger)',
                                                             cursor: 'pointer',
                                                             transition: 'all 0.2s',
+                                                            whiteSpace: 'nowrap',
                                                             marginLeft: 'auto'
                                                         }}
                                                         title="Clear Private Key"
@@ -677,7 +683,7 @@ export default function Settings() {
                         <h2 style={{ marginBottom: 24, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 10 }}>
                             <Folder size={20} color="var(--primary)" /> Favorite Paths
                         </h2>
-                        <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+                        <div className="input-group-responsive" style={{ marginBottom: 16 }}>
                             <input
                                 type="text"
                                 value={newLoc}
@@ -710,7 +716,7 @@ export default function Settings() {
                     {/* --- SECTION 4: MAINTENANCE --- */}
                     <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.3)' }}>
                         <h2 style={{ marginBottom: 24, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 10, color: 'var(--text-main)' }}>
-                            <Trash2 size={20} color="var(--danger)" /> Maintenance
+                            <Wrench size={20} color="var(--error)" /> Maintenance
                         </h2>
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { RefreshCw, Trash2, Power, AlertCircle, CheckCircle, Eye, Play } from 'lucide-react';
 import ConfirmationModal from '../components/ConfirmationModal';
 import ModalBackdrop from '../components/ModalBackdrop';
+import PullToRefresh from '../components/PullToRefresh';
 import { createPortal } from 'react-dom';
 
 export default function Dashboard() {
@@ -168,6 +169,7 @@ export default function Dashboard() {
             {/* Diff Viewer Modal */}
             {activeDiff && createPortal(
                 <ModalBackdrop onClose={() => setActiveDiff(null)}>
+                    {/* ... modal content ... */}
                     <div style={{ padding: 24, paddingBottom: 16, width: '600px', maxWidth: '90vw' }}>
                         <h2 style={{ fontSize: '1.2rem', marginBottom: 8 }}>Sync Differences</h2>
                         <p style={{ color: 'var(--text-muted)', marginBottom: 16, fontSize: '0.9em' }}>
@@ -243,166 +245,7 @@ export default function Dashboard() {
             )
             }
 
-            <div className="header">
-                <h1 className="page-title">Dashboard</h1>
-                <p style={{ color: 'var(--text-muted)' }}>Overview of your synced folders and files.</p>
-            </div>
-
-            <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <button className="btn btn-secondary" onClick={refreshAll} disabled={isRefreshing}>
-                        <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
-                        <span style={{ marginLeft: 8 }}>Refresh Status</span>
-                    </button>
-                </div>
-                {loading ? <p>Loading...</p> : items.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-                        <p>No sync items configured. Go to <b>Remote Browser</b> to add one.</p>
-                    </div>
-                ) : (
-                    <div className="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style={{ width: 50 }}>Type</th>
-                                    <th>Remote Path</th>
-                                    <th>Local Path</th>
-                                    <th>Status</th>
-                                    <th>Last Synced</th>
-                                    <th style={{ textAlign: 'right' }}>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {items.map(item => (
-                                    <tr key={item.id} style={{ opacity: (liveDiffs[item.id]?.status === 'synced' || liveDiffs[item.id]?.status === 'outdated' || (item.active && liveDiffs[item.id]?.status !== 'local_missing')) ? 1 : 0.5 }}>
-                                        <td>{item.type === 'folder' ? '📁' : '📄'}</td>
-                                        <td style={{ fontFamily: 'monospace' }}>{item.remote_path}</td>
-                                        <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }}>{item.local_path}</td>
-                                        <td>
-                                            {(() => {
-                                                const isLocalMissing = liveDiffs[item.id]?.status === 'local_missing';
-                                                const isOutdated = liveDiffs[item.id]?.status === 'outdated';
-                                                const activeJob = item.activeJob;
-
-                                                let displayStatus = item.status;
-                                                let displayClass = item.status;
-
-                                                if (activeJob) {
-                                                    // running, queued, pausing
-                                                    if (activeJob.status === 'queued') {
-                                                        displayStatus = 'Queued';
-                                                        displayClass = 'queued';
-                                                    } else if (activeJob.status === 'running') {
-                                                        displayStatus = 'Running';
-                                                        displayClass = 'running';
-                                                    } else {
-                                                        displayStatus = 'Pending';
-                                                        displayClass = 'pending';
-                                                    }
-                                                } else if (isLocalMissing) {
-                                                    displayStatus = 'error';
-                                                    displayClass = 'error';
-                                                } else if (isOutdated) {
-                                                    displayStatus = 'Out of Sync';
-                                                    displayClass = 'out-of-sync';
-                                                }
-
-                                                const displayError = item.error_message || (isLocalMissing ? liveDiffs[item.id].error : null);
-
-                                                return (
-                                                    <>
-                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                            <span className={`status-badge status-${displayClass.toLowerCase().replace(/ /g, '-')}`}>
-                                                                {displayStatus}
-                                                            </span>
-                                                        </div>
-                                                        {displayError && (
-                                                            <div style={{ fontSize: '0.8em', color: 'var(--error)', marginTop: 4 }}>
-                                                                {displayError}
-                                                            </div>
-                                                        )}
-                                                        {/* Live Status Indicator - Always show regardless of Active status */}
-                                                        <div style={{ fontSize: '0.75em', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                                                            {(!liveDiffs[item.id] || liveDiffs[item.id].status === 'checking') && (
-                                                                <span style={{ color: 'var(--text-muted)' }}>Checking remote...</span>
-                                                            )}
-                                                            {liveDiffs[item.id]?.status === 'synced' && (
-                                                                <span style={{ color: 'var(--success)' }}>✔ Up to date</span>
-                                                            )}
-                                                            {liveDiffs[item.id]?.status === 'outdated' && (
-                                                                activeJob ? (
-                                                                    activeJob.status === 'paused' ? (
-
-                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 }}>
-                                                                            <span style={{ color: 'var(--warning)', whiteSpace: 'nowrap' }}>⚠ Sync paused</span>
-                                                                            <button
-                                                                                onClick={() => resumeJob(activeJob.id)}
-                                                                                className="text-btn"
-                                                                                style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'underline' }}
-                                                                            >
-                                                                                <Play size={14} /> Resume
-                                                                            </button>
-                                                                        </div>
-                                                                    ) : (
-                                                                        <span style={{ color: 'var(--success)' }}>
-                                                                            {activeJob.status === 'queued' ? '⧖ Waiting for other sync to finish...' : '⚠ Sync running...'}
-                                                                        </span>
-                                                                    )
-                                                                ) : (
-
-                                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 }}>
-                                                                        <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>
-                                                                        <button
-                                                                            className="text-btn"
-                                                                            style={{ textDecoration: 'underline', fontSize: 'inherit', color: 'rgba(255,255,255,0.7)', padding: 0 }}
-                                                                            onClick={() => setActiveDiff({ itemId: item.id, files: liveDiffs[item.id].diffFiles || [], basePath: item.remote_path })}
-                                                                        >
-                                                                            View
-                                                                        </button>
-                                                                    </div>
-                                                                )
-                                                            )}
-                                                            {liveDiffs[item.id]?.status === 'error' && (
-                                                                <span style={{ color: 'var(--error)' }}>⚠ Check failed</span>
-                                                            )}
-                                                        </div>
-                                                    </>
-                                                );
-                                            })()}
-                                        </td>
-                                        <td style={{ fontSize: '0.9em' }}>
-                                            {item.last_synced_at ? new Date(item.last_synced_at).toLocaleString() : '-'}
-                                        </td>
-                                        <td style={{ textAlign: 'right' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                                                <button
-                                                    onClick={() => handleSync(item.id)}
-                                                    className="btn btn-secondary"
-                                                    title="Sync Now"
-                                                    disabled={item.status === 'running' || item.status === 'syncing'}
-                                                >
-                                                    <RefreshCw size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => toggleActive(item.id, item.active)}
-                                                    className="btn btn-secondary"
-                                                    title={item.active ? "Disable Auto-Sync" : "Enable Auto-Sync"}
-                                                >
-                                                    <Power size={16} color={item.active ? 'var(--success)' : 'var(--text-muted)'} />
-                                                </button>
-                                                <button onClick={() => confirmDelete(item.id)} className="btn btn-danger" title="Remove">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
-
+            {/* Confirmation Modal */}
             <ConfirmationModal
                 isOpen={modalConfig.isOpen}
                 onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
@@ -413,6 +256,168 @@ export default function Dashboard() {
                 isDestructive={modalConfig.isDestructive}
                 isWarning={modalConfig.isWarning}
             />
-        </div >
+
+            <PullToRefresh onRefresh={refreshAll}>
+                <div className="header">
+                    <h1 className="page-title">Dashboard</h1>
+                    <p style={{ color: 'var(--text-muted)' }}>Overview of your synced folders and files.</p>
+                </div>
+
+                <div className="card">
+                    <div className="hide-mobile" style={{ display: 'flex', justifyContent: 'flex-end', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                        <button className="btn btn-secondary" onClick={refreshAll} disabled={isRefreshing}>
+                            <RefreshCw size={16} className={isRefreshing ? 'spin' : ''} />
+                            <span style={{ marginLeft: 8 }}>Refresh Status</span>
+                        </button>
+                    </div>
+                    {loading ? <p>Loading...</p> : items.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+                            <p>No sync items configured. Go to <b>Remote Browser</b> to add one.</p>
+                        </div>
+                    ) : (
+                        <div className="table-wrap">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th style={{ width: 50 }}>Type</th>
+                                        <th>Remote Path</th>
+                                        <th>Local Path</th>
+                                        <th>Status</th>
+                                        <th>Last Synced</th>
+                                        <th style={{ textAlign: 'right' }}>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {items.map(item => (
+                                        <tr key={item.id} style={{ opacity: (liveDiffs[item.id]?.status === 'synced' || liveDiffs[item.id]?.status === 'outdated' || (item.active && liveDiffs[item.id]?.status !== 'local_missing')) ? 1 : 0.5 }}>
+                                            <td>{item.type === 'folder' ? '📁' : '📄'}</td>
+                                            <td style={{ fontFamily: 'monospace' }} data-label="Remote Path">{item.remote_path}</td>
+                                            <td style={{ fontFamily: 'monospace', color: 'var(--text-muted)' }} data-label="Local Path">{item.local_path}</td>
+                                            <td data-label="Status">
+                                                {(() => {
+                                                    const isLocalMissing = liveDiffs[item.id]?.status === 'local_missing';
+                                                    const isOutdated = liveDiffs[item.id]?.status === 'outdated';
+                                                    const activeJob = item.activeJob;
+
+                                                    let displayStatus = item.status;
+                                                    let displayClass = item.status;
+
+                                                    if (activeJob) {
+                                                        // running, queued, pausing
+                                                        if (activeJob.status === 'queued') {
+                                                            displayStatus = 'Queued';
+                                                            displayClass = 'queued';
+                                                        } else if (activeJob.status === 'running') {
+                                                            displayStatus = 'Running';
+                                                            displayClass = 'running';
+                                                        } else {
+                                                            displayStatus = 'Pending';
+                                                            displayClass = 'pending';
+                                                        }
+                                                    } else if (isLocalMissing) {
+                                                        displayStatus = 'error';
+                                                        displayClass = 'error';
+                                                    } else if (isOutdated) {
+                                                        displayStatus = 'Out of Sync';
+                                                        displayClass = 'out-of-sync';
+                                                    }
+
+                                                    const displayError = item.error_message || (isLocalMissing ? liveDiffs[item.id].error : null);
+
+                                                    return (
+                                                        <>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                <span className={`status-badge status-${displayClass.toLowerCase().replace(/ /g, '-')}`}>
+                                                                    {displayStatus}
+                                                                </span>
+                                                            </div>
+                                                            {displayError && (
+                                                                <div style={{ fontSize: '0.8em', color: 'var(--error)', marginTop: 4 }}>
+                                                                    {displayError}
+                                                                </div>
+                                                            )}
+                                                            {/* Live Status Indicator - Always show regardless of Active status */}
+                                                            <div style={{ fontSize: '0.75em', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                                                {(!liveDiffs[item.id] || liveDiffs[item.id].status === 'checking') && (
+                                                                    <span style={{ color: 'var(--text-muted)' }}>Checking remote...</span>
+                                                                )}
+                                                                {liveDiffs[item.id]?.status === 'synced' && (
+                                                                    <span style={{ color: 'var(--success)' }}>✔ Up to date</span>
+                                                                )}
+                                                                {liveDiffs[item.id]?.status === 'outdated' && (
+                                                                    activeJob ? (
+                                                                        activeJob.status === 'paused' ? (
+
+                                                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 }}>
+                                                                                <span style={{ color: 'var(--warning)', whiteSpace: 'nowrap' }}>⚠ Sync paused</span>
+                                                                                <button
+                                                                                    onClick={() => resumeJob(activeJob.id)}
+                                                                                    className="text-btn"
+                                                                                    style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, textDecoration: 'underline' }}
+                                                                                >
+                                                                                    <Play size={14} /> Resume
+                                                                                </button>
+                                                                            </div>
+                                                                        ) : (
+                                                                            <span style={{ color: 'var(--success)' }}>
+                                                                                {activeJob.status === 'queued' ? '⧖ Waiting for other sync to finish...' : '⚠ Sync running...'}
+                                                                            </span>
+                                                                        )
+                                                                    ) : (
+
+                                                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 6 }}>
+                                                                            <span style={{ color: 'var(--warning)' }}>⚠ Remote changed ({liveDiffs[item.id].diffCount} files)</span>
+                                                                            <button
+                                                                                className="text-btn"
+                                                                                style={{ textDecoration: 'underline', fontSize: 'inherit', color: 'rgba(255,255,255,0.7)', padding: 0 }}
+                                                                                onClick={() => setActiveDiff({ itemId: item.id, files: liveDiffs[item.id].diffFiles || [], basePath: item.remote_path })}
+                                                                            >
+                                                                                View
+                                                                            </button>
+                                                                        </div>
+                                                                    )
+                                                                )}
+                                                                {liveDiffs[item.id]?.status === 'error' && (
+                                                                    <span style={{ color: 'var(--error)' }}>⚠ Check failed</span>
+                                                                )}
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </td>
+                                            <td style={{ fontSize: '0.9em' }} data-label="Last Synced">
+                                                {item.last_synced_at ? new Date(item.last_synced_at).toLocaleString() : '-'}
+                                            </td>
+                                            <td style={{ textAlign: 'right' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                                    <button
+                                                        onClick={() => handleSync(item.id)}
+                                                        className="btn btn-secondary"
+                                                        title="Sync Now"
+                                                        disabled={item.status === 'running' || item.status === 'syncing'}
+                                                    >
+                                                        <RefreshCw size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => toggleActive(item.id, item.active)}
+                                                        className="btn btn-secondary"
+                                                        title={item.active ? "Disable Auto-Sync" : "Enable Auto-Sync"}
+                                                    >
+                                                        <Power size={16} color={item.active ? 'var(--success)' : 'var(--text-muted)'} />
+                                                    </button>
+                                                    <button onClick={() => confirmDelete(item.id)} className="btn btn-danger" title="Remove">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            </PullToRefresh>
+        </div>
     );
 }
